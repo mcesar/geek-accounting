@@ -1,0 +1,17 @@
+{
+	"name": "geek-accounting"
+	, "description": "Geek Accounting"
+	, "version": "0.0.1"
+	, "private": true
+	, "dependencies": {
+		"express": "*"
+		, "mongodb": "*"
+	}
+	, "devDependencies": {
+		"mocha": "0.3.x"
+	}
+	, "scripts": {
+    	"test": "make test"
+  	}
+	, "main": "app"
+}

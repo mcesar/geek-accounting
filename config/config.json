@@ -1,0 +1,7 @@
+{
+	"dbServerAddress": "127.0.0.1",
+	"dbServerPort": 27017,
+	"dbWrite": 1,
+	"dbName": "geek_accounting",
+	"webServerPort": 8001
+}
