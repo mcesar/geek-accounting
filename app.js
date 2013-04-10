@@ -22,14 +22,13 @@ app.configure(function () {
 		res.send(500, 'Erro interno: ' + err.message);
 	});
 
-	var controllers = [
-		'user_management',
-		'chart_of_accounts'
-	];
-
-	controllers.forEach(function (ctrl) {
-		require('./app/controllers/' + ctrl).setup(app);
+	fs.readdir('./plugins', function (err, files) {
+		if (err) { throw err; }
+		files.forEach(function (file) {
+			require('./plugins/' + file).setup(app);
+		});
 	});
+
 });
 
 db.open(function (err) {
