@@ -3,5 +3,5 @@
 	"dbServerPort": 27017,
 	"dbWrite": 1,
 	"dbName": "geek_accounting",
-	"webServerPort": 8001
+	"webServerPort": 8000
 }

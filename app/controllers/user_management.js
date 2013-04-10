@@ -34,8 +34,18 @@ UserManagement.prototype.users = function (req, res, next) {
 	});
 };
 
+UserManagement.prototype.userValidation = function (user) {
+	if (utils.isEmpty(user.user)) { return "The user must be informed"; }
+	if (utils.isEmpty(user.name)) { return "The name must be informed"; }
+	if (utils.isEmpty(user._id) && utils.isEmpty(user.password)) { 
+		return "The password must be informed";
+	}
+};
+
 UserManagement.prototype.addUser = function (req, res, next) {
-	var user = req.body;
+	var user = req.body
+		, userValidation = controller.userValidation(user);
+	if (userValidation) { return next(new Error(userValidation)); }
 	user.password = utils.sha1Hex(user.password);
 	db.insert('users', user, function (err, item) {
 		if (err) { return next(err); }
@@ -50,14 +60,7 @@ UserManagement.prototype.updateUsers = function (req, res, next) {
 			usersToUpdate[i].password = utils.sha1Hex(usersToUpdate[i].password);
 		}
 	}
-	db.bulkUpdate('users', usersToUpdate, 
-		function (user) {
-			if (utils.isEmpty(user.user)) { return "O usuário deve ser informado"; }
-			if (utils.isEmpty(user.name)) { return "O nome deve ser informado"; }
-			if (utils.isEmpty(user._id) && utils.isEmpty(user.password)) { 
-				return "A senha deve ser informada";
-			}
-		}, 
+	db.bulkUpdate('users', usersToUpdate, controller.userValidation, 
 		function (err, added, updated, removed, rejects) {
 			if (err) { return next(err); }
 			controller.rejects = rejects;
@@ -67,7 +70,7 @@ UserManagement.prototype.updateUsers = function (req, res, next) {
 };
 
 exports.setup = function (app) {
-	
+
 	app.use(express.basicAuth(controller.login));
 
 	app.get('/users', controller.users);
