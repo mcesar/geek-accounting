@@ -17,13 +17,14 @@ app.configure(function () {
 		res.header("Expires", 0);
 		next();
 	});
-	app.use(function (err, req, res, next){
+	app.use(function (err, req, res, next) {
 		console.error(err.stack);
 		res.send(500, 'Erro interno: ' + err.message);
 	});
 
 	var controllers = [
-		'user_management'
+		'user_management',
+		'chart_of_accounts'
 	];
 
 	controllers.forEach(function (ctrl) {
