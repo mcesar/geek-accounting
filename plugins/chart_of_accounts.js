@@ -5,6 +5,7 @@ var express = require('express');
 
 var utils = require('../lib/utils').utils;
 var db = require('../lib/database').db;
+var BSON = require('mongodb').BSONPure;
 
 function Service () {
 }
@@ -63,9 +64,26 @@ Service.prototype.addChartOfAccounts = function (coa, callback) {
 Service.prototype.addAccount = function (coa, account, callback) {
 	this.accountValidation(coa, account, function (err, validation) {
 		if (validation) { return callback(new Error(validation)); }
+		account._id = new BSON.ObjectID();
 		db.update('charts_of_accounts', { _id: db.bsonId(coa._id) }, 
 			{ $push: { accounts: account } },
 			function (err, item) {
+				if (err) { return callback(err); }
+				callback(null, account);
+			}
+		);
+	});
+};
+
+Service.prototype.updateAccount = function (coa, accountId, account, 
+		callback) {
+	this.accountValidation(coa, account, function (err, validation) {
+		if (validation) { return callback(new Error(validation)); }
+		db.update('charts_of_accounts', 
+			{ _id: db.bsonId(coa._id), 'accounts._id': db.bsonId(accountId) }, 
+			{ $set: { 'accounts.$': account } },
+			function (err, item) {
+				console.log(item);
 				if (err) { return callback(err); }
 				callback(null, account);
 			}
@@ -110,6 +128,18 @@ function addAccount (req, res, next) {
 	);
 }
 
+function updateAccount (req, res, next) {
+	new Service().updateAccount(
+		{ _id: req.params.id }, 
+		req.params.accountId, 
+		req.body, 
+		function (err, account) {
+			if (err) { return next(err); }
+			res.send(account);
+		}
+	);
+}
+
 exports.Service = Service;
 
 exports.setup = function (app) {
@@ -118,4 +148,5 @@ exports.setup = function (app) {
 	app.post('/charts-of-accounts', addChartOfAccounts);
 	app.get('/charts-of-accounts/:id/accounts', accounts);
 	app.post('/charts-of-accounts/:id/accounts', addAccount);
+	app.put('/charts-of-accounts/:id/accounts/:accountId', updateAccount);
 };
