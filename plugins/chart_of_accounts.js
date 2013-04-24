@@ -21,8 +21,23 @@ Service.prototype.accountValidation = function (coa, account, callback) {
 	if (utils.isEmpty(account.name)) {
 		return callback(null, "The name must be informed");
 	}
+	if (typeof account.balanceSheet !== 'boolean' &&
+				typeof account.incomeStatement !== 'boolean') {
+		return callback(null, "The statement must be informed");
+	}
+	if (account.balanceSheet === account.incomeStatement) {
+		return callback(null, 
+			"The statement must be either balance sheet or income statement");
+	}
+	if (typeof account.debitBalance === 'boolean' &&
+				typeof account.creditBalance === 'boolean') {
+		return callback(null, "The normal balance must be informed");
+	}
+	if (account.debitBalance === account.creditBalance) {
+		return callback(null, "The normal balance must be either debit or credit");
+	}
 	if (typeof account.parent !== 'undefined') {
-		this.account(account.parent._id, function (err, parentAccount) {
+		this.account(account.parent, function (err, parentAccount) {
 			if (err) { return callback(err); }
 			if (account.number.indexOf(parentAccount.number) !== 0) {
 				return callback(null, 
@@ -61,6 +76,19 @@ Service.prototype.addChartOfAccounts = function (coa, callback) {
 	});
 };
 
+Service.prototype.account = function (accountId, callback) {
+	db.conn().collection('charts_of_accounts', function (err, coa) {
+		if (err) { return callback(err); }
+		coa.findOne({}, 
+			{ accounts: { $elemMatch: { _id: db.bsonId(accountId) } } },
+			function (err, item) {
+				if (err) { return callback(err); }
+				callback(null, item === null ? null : item.accounts[0]);
+			}
+		);
+	});
+};
+
 Service.prototype.addAccount = function (coa, account, callback) {
 	this.accountValidation(coa, account, function (err, validation) {
 		if (validation) { return callback(new Error(validation)); }
@@ -79,11 +107,11 @@ Service.prototype.updateAccount = function (coa, accountId, account,
 		callback) {
 	this.accountValidation(coa, account, function (err, validation) {
 		if (validation) { return callback(new Error(validation)); }
+		account._id = db.bsonId(accountId);
 		db.update('charts_of_accounts', 
 			{ _id: db.bsonId(coa._id), 'accounts._id': db.bsonId(accountId) }, 
 			{ $set: { 'accounts.$': account } },
 			function (err, item) {
-				console.log(item);
 				if (err) { return callback(err); }
 				callback(null, account);
 			}
@@ -119,6 +147,15 @@ function accounts (req, res, next) {
 	});
 }
 
+function account (req, res, next) {
+	new Service().account(req.params.accountId, 
+		function (err, account) {
+			if (err) { return next(err); }
+			res.send(account);
+		}
+	);
+}
+
 function addAccount (req, res, next) {
 	new Service().addAccount({ _id: req.params.id }, req.body, 
 		function (err, account) {
@@ -147,6 +184,7 @@ exports.setup = function (app) {
 	app.get('/charts-of-accounts/:id', chartOfAccounts);
 	app.post('/charts-of-accounts', addChartOfAccounts);
 	app.get('/charts-of-accounts/:id/accounts', accounts);
+	app.get('/charts-of-accounts/:id/accounts/:accountId', account);
 	app.post('/charts-of-accounts/:id/accounts', addAccount);
 	app.put('/charts-of-accounts/:id/accounts/:accountId', updateAccount);
 };
