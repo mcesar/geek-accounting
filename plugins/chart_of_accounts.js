@@ -124,13 +124,18 @@ Service.prototype.addAccount = function (coa, account, callback) {
 	var that = this;
 	account.number = '' + account.number;
 	this.accountValidation(coa, account, function (err, validation) {
+		var update;
 		if (err) { return callback(err); }
 		if (validation) { return callback(new Error(validation)); }
 		account._id = new BSON.ObjectID();
 		if (account.parent) { account.parent = db.bsonId(account.parent); }
 		account.analytic = true;
-		db.update('charts_of_accounts', { _id: db.bsonId(coa._id) }, 
-			{ $push: { accounts: account } },
+		update = { $push: { accounts: account } };
+		if (account.retainedEarnings) {
+			delete account.retainedEarnings;
+			update.retainedEarnings = account._id;
+		}
+		db.update('charts_of_accounts', { _id: db.bsonId(coa._id) }, update,
 			function (err, item) {
 				if (err) { return callback(err); }
 				if (account.parent) {
