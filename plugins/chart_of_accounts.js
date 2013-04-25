@@ -8,6 +8,17 @@ var db = require('../lib/database').db;
 var BSON = require('mongodb').BSONPure;
 
 function Service () {
+	this.inheritedProperties = [ 
+		{ name: 'balanceSheet', classification: 'financial statement' }, 
+		{ name: 'incomeStatement', classification: 'financial statement' },
+		{ name: 'operational', classification: 'income statement attribute' },
+		{ name: 'deduction', classification: 'income statement attribute' },
+		{ name: 'salesTax', classification: 'income statement attribute' },
+		{ name: 'cost', classification: 'income statement attribute' },
+		{ name: 'incomeTax', classification: 'income statement attribute' },
+		{ name: 'profitFromAssociates', 
+			classification: 'income statement attribute' }
+	];
 }
 
 Service.prototype.chartOfAccountsValidation = function (coa) {
@@ -15,6 +26,7 @@ Service.prototype.chartOfAccountsValidation = function (coa) {
 };
 
 Service.prototype.accountValidation = function (coa, account, callback) {
+	var that = this;
 	if (utils.isEmpty(account.number)) {
 		return callback(null, "The number must be informed"); 
 	}
@@ -23,7 +35,7 @@ Service.prototype.accountValidation = function (coa, account, callback) {
 	}
 	if (typeof account.balanceSheet !== 'boolean' &&
 				typeof account.incomeStatement !== 'boolean') {
-		return callback(null, "The statement must be informed");
+		return callback(null, "The financial statement must be informed");
 	}
 	if (account.balanceSheet === account.incomeStatement) {
 		return callback(null, 
@@ -37,11 +49,23 @@ Service.prototype.accountValidation = function (coa, account, callback) {
 		return callback(null, "The normal balance must be either debit or credit");
 	}
 	if (typeof account.parent !== 'undefined') {
-		this.account(account.parent, function (err, parentAccount) {
+		that.account(account.parent.toString(), function (err, parentAccount) {
+			var i;
 			if (err) { return callback(err); }
+			if (!parentAccount) { 
+				return callback(null, 'Parent not found'); 
+			}
 			if (account.number.indexOf(parentAccount.number) !== 0) {
 				return callback(null, 
 					"The number must start with parent's number");
+			}
+			for (i = 0; i < that.inheritedProperties.length; i += 1) {
+				if (parentAccount[that.inheritedProperties[i].name] && 
+						!account[that.inheritedProperties[i].name]) {
+					return callback(null, 
+						"The " + that.inheritedProperties[i].classification + 
+						" must be same as the parent");
+				}
 			}
 			callback();
 		});
@@ -79,25 +103,55 @@ Service.prototype.addChartOfAccounts = function (coa, callback) {
 Service.prototype.account = function (accountId, callback) {
 	db.conn().collection('charts_of_accounts', function (err, coa) {
 		if (err) { return callback(err); }
-		coa.findOne({}, 
-			{ accounts: { $elemMatch: { _id: db.bsonId(accountId) } } },
-			function (err, item) {
+		coa.find({}, 
+			{ accounts: { $elemMatch: { _id: db.bsonId(accountId) } } }).toArray(
+			function (err, items) {
+				var i;
 				if (err) { return callback(err); }
-				callback(null, item === null ? null : item.accounts[0]);
+				if (items === null) { return callback(null, null); }
+				for (i = 0; i < items.length; i += 1) {
+					if (items[i].accounts) {
+						return callback(null, items[i].accounts[0]);
+					}
+				}
+				callback(null, null);
 			}
 		);
 	});
 };
 
 Service.prototype.addAccount = function (coa, account, callback) {
+	var that = this;
+	account.number = '' + account.number;
 	this.accountValidation(coa, account, function (err, validation) {
+		if (err) { return callback(err); }
 		if (validation) { return callback(new Error(validation)); }
 		account._id = new BSON.ObjectID();
+		if (account.parent) { account.parent = db.bsonId(account.parent); }
+		account.analytic = true;
 		db.update('charts_of_accounts', { _id: db.bsonId(coa._id) }, 
 			{ $push: { accounts: account } },
 			function (err, item) {
 				if (err) { return callback(err); }
-				callback(null, account);
+				if (account.parent) {
+					that.account(account.parent.toString(), 
+						function (err, parentAccount) {
+							delete parentAccount.analytic;
+							parentAccount.synthetic = true;
+							db.update('charts_of_accounts', 
+								{ _id: db.bsonId(coa._id), 
+									'accounts._id': parentAccount._id }, 
+								{ $set: { 'accounts.$': parentAccount } },
+								function (err, item) {
+									if (err) { return callback(err); }
+									callback(null, account);
+								}
+							);
+						}
+					);
+				} else {
+					callback(null, account);
+				}
 			}
 		);
 	});
@@ -105,17 +159,27 @@ Service.prototype.addAccount = function (coa, account, callback) {
 
 Service.prototype.updateAccount = function (coa, accountId, account, 
 		callback) {
+	var that = this;
 	this.accountValidation(coa, account, function (err, validation) {
+		var updatingAccount = {};
+		if (err) { return callback(err); }
 		if (validation) { return callback(new Error(validation)); }
-		account._id = db.bsonId(accountId);
-		db.update('charts_of_accounts', 
-			{ _id: db.bsonId(coa._id), 'accounts._id': db.bsonId(accountId) }, 
-			{ $set: { 'accounts.$': account } },
-			function (err, item) {
-				if (err) { return callback(err); }
-				callback(null, account);
+		that.account(accountId, function (err, oldAccount) {
+			var prop;
+			for (prop in oldAccount) {
+				if (oldAccount.hasOwnProperty(prop) && prop !== 'name') { 
+					account[prop] = oldAccount[prop]; 
+				}
 			}
-		);
+			db.update('charts_of_accounts', 
+				{ _id: db.bsonId(coa._id), 'accounts._id': db.bsonId(accountId) }, 
+				{ $set: { 'accounts.$': account } },
+				function (err, item) {
+					if (err) { return callback(err); }
+					callback(null, account);
+				}
+			);
+		});
 	});
 };
 
