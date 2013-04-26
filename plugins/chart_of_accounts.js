@@ -74,10 +74,63 @@ Service.prototype.accountValidation = function (coa, account, callback) {
 	}
 };
 
+Service.prototype.transactionValidation = function (transaction, callback) {
+	var that = this;
+	if (!Array.isArray(transaction.debits) || transaction.debits.length === 0) { 
+		return callback(null, "At least one debit must be informed");
+	}
+	if (!Array.isArray(transaction.credits) || 
+			transaction.credits.length === 0) { 
+		return callback(null, "At least one credit must be informed");
+	}
+	if (typeof transaction.date === 'undefined' || 
+			isNaN(transaction.date.getTime())) { 
+		return callback(null, "The date must be informed");
+	}
+	if (utils.isEmpty(transaction.memo)) { 
+		return callback(null, "The memo must be informed");
+	}
+	(function () {
+		var props = ['debits', 'credits'], sum = { debits: 0, credits: 0 };
+		function validateEntries (i, j, callback) {
+			if (j >= transaction[props[i]].length) { return callback(); }
+			if (typeof transaction[props[i]][j].value !== 'number') {
+				return callback(null, "The value must be informed for each entry");
+			}
+			if (typeof transaction[props[i]][j].account === 'undefined') {
+				return callback(null, "The account must be informed for each entry");
+			}
+			that.account(transaction[props[i]][j].account, 
+				function (err, account) {
+					if (account === null) {
+						return callback(null, 'Account not found');
+					}
+					sum[props[i]] += transaction[props[i]][j].value;
+					validateEntries(i, j + 1, callback);
+				}
+			);
+		}
+		(function eachProp (i) {
+			if (i >= props.length) {
+				if (sum.debits === sum.credits) {
+					return callback();
+				} else {
+					return callback(null, 
+						"The sum of debit values must be equals to " + 
+						"the sum of credit values");
+				}
+			}
+			validateEntries(i, 0, function (err, validation) {
+				if (err || validation) { return callback(err, validation); }
+				eachProp(i + 1);
+			});
+		}(0));
+	}());
+};
+
 Service.prototype.chartsOfAccounts = function (callback) {
 	db.find('charts_of_accounts', function (err, items) {
-		if (err) { return callback(err); }
-		callback(null, items);
+		callback(err, items);
 	});
 };
 
@@ -123,7 +176,7 @@ Service.prototype.account = function (accountId, callback) {
 Service.prototype.addAccount = function (coa, account, callback) {
 	var that = this;
 	if (typeof account.number !== 'undefined') {
-		account.number = '' + account.number;
+		account.number = account.number.toString();
 	}
 	this.accountValidation(coa, account, function (err, validation) {
 		var update;
@@ -208,6 +261,30 @@ Service.prototype.updateAccount = function (coa, accountId, account,
 	});
 };
 
+Service.prototype.transactions = function (coaId, callback) {
+	db.find('transactions_' + coaId, function (err, items) {
+		callback(err, items);
+	});
+};
+
+Service.prototype.addTransaction = function (coaId, transaction, callback) {
+	transaction.date = new Date(transaction.date);
+	this.transactionValidation(transaction, function (err, validation) {
+		var props = [ 'debits', 'credits' ], i;
+		if (err) { return callback(err); }
+		if (validation) { return callback(new Error(validation)); }
+		props.forEach(function (prop) {
+			transaction[prop].forEach(function (entry) {
+				entry.account = db.bsonId(entry.account);
+			});
+		});
+		db.insert('transactions_' + coaId, transaction, function (err, item) {
+			if (err) { return callback(err); }
+			callback(null, item);
+		});
+	});
+};
+
 function chartsOfAccounts (req, res, next) {
 	new Service().chartsOfAccounts(function (err, items) {
 		if (err) { return next(err); }
@@ -266,6 +343,22 @@ function updateAccount (req, res, next) {
 	);
 }
 
+function transactions (req, res, next) {
+	new Service().transactions(req.params.id, function (err, transactions) {
+		if (err) { return next(err); }
+		res.send(transactions);
+	});
+}
+
+function addTransaction (req, res, next) {
+	new Service().addTransaction(req.params.id, req.body, 
+		function (err, transaction) {
+			if (err) { return next(err); }
+			res.send(transaction);
+		}
+	);
+}
+
 exports.Service = Service;
 
 exports.setup = function (app) {
@@ -276,4 +369,6 @@ exports.setup = function (app) {
 	app.get('/charts-of-accounts/:id/accounts/:accountId', account);
 	app.post('/charts-of-accounts/:id/accounts', addAccount);
 	app.put('/charts-of-accounts/:id/accounts/:accountId', updateAccount);
+	app.get('/charts-of-accounts/:id/transactions', transactions);
+	app.post('/charts-of-accounts/:id/transactions', addTransaction);
 };
