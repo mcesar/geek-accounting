@@ -191,6 +191,7 @@ Service.prototype.updateAccount = function (coa, accountId, account,
 			if (account.retainedEarnings) {
 				delete account.retainedEarnings;
 				update.$set.retainedEarningsAccount = db.bsonId(accountId);
+				doUpdate();
 			} else if (account.retainedEarnings === false) {
 				db.update('charts_of_accounts', 
 					{ _id: db.bsonId(coa._id), 
