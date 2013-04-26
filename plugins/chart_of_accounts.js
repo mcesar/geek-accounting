@@ -122,7 +122,9 @@ Service.prototype.account = function (accountId, callback) {
 
 Service.prototype.addAccount = function (coa, account, callback) {
 	var that = this;
-	account.number = '' + account.number;
+	if (typeof account.number !== 'undefined') {
+		account.number = '' + account.number;
+	}
 	this.accountValidation(coa, account, function (err, validation) {
 		var update;
 		if (err) { return callback(err); }
@@ -133,7 +135,7 @@ Service.prototype.addAccount = function (coa, account, callback) {
 		update = { $push: { accounts: account } };
 		if (account.retainedEarnings) {
 			delete account.retainedEarnings;
-			update.retainedEarnings = account._id;
+			update.$set = { retainedEarningsAccount:  account._id };
 		}
 		db.update('charts_of_accounts', { _id: db.bsonId(coa._id) }, update,
 			function (err, item) {
@@ -170,20 +172,37 @@ Service.prototype.updateAccount = function (coa, accountId, account,
 		if (err) { return callback(err); }
 		if (validation) { return callback(new Error(validation)); }
 		that.account(accountId, function (err, oldAccount) {
-			var prop;
-			for (prop in oldAccount) {
-				if (oldAccount.hasOwnProperty(prop) && prop !== 'name') { 
-					account[prop] = oldAccount[prop]; 
+			var prop, update = { $set: { 'accounts.$': account } };
+			function doUpdate () {
+				for (prop in oldAccount) {
+					if (oldAccount.hasOwnProperty(prop) && prop !== 'name') { 
+						account[prop] = oldAccount[prop]; 
+					}
 				}
+				db.update('charts_of_accounts', 
+					{ _id: db.bsonId(coa._id), 'accounts._id': db.bsonId(accountId) }, 
+					update,
+					function (err, item) {
+						if (err) { return callback(err); }
+						callback(null, account);
+					}
+				);
 			}
-			db.update('charts_of_accounts', 
-				{ _id: db.bsonId(coa._id), 'accounts._id': db.bsonId(accountId) }, 
-				{ $set: { 'accounts.$': account } },
-				function (err, item) {
-					if (err) { return callback(err); }
-					callback(null, account);
-				}
-			);
+			if (account.retainedEarnings) {
+				delete account.retainedEarnings;
+				update.$set.retainedEarningsAccount = db.bsonId(accountId);
+			} else if (account.retainedEarnings === false) {
+				db.update('charts_of_accounts', 
+					{ _id: db.bsonId(coa._id), 
+						retainedEarningsAccount: db.bsonId(accountId) },
+					{ $unset: { retainedEarningsAccount: 1 } },
+					function (err, item) {
+						doUpdate();
+					}
+				);
+			} else {
+				doUpdate();
+			}
 		});
 	});
 };
