@@ -287,12 +287,27 @@ Service.prototype.addTransaction = function (coaId, transaction, callback) {
 };
 
 Service.prototype.journal = function (coaId, from, to, callback) {
+	var that = this;
 	db.conn().collection('transactions_' + coaId, function (err, collection) {
 		if (err) { return callback(err); }
 		collection.find({ date: { $gte: from , $lte: to } }).
 			sort({ date: 1, timestamp: 1 }).
 			toArray(function (err, items) {
-				callback(err, items);
+				var props = [ 'debits', 'credits' ], entries = [], i, j;
+				if (err) { return callback(err); }
+				for (i = 0; i < props.length; i += 1) {
+					for (j = 0; j < items.length; j += 1) {
+						entries.push.apply(entries, items[j][props[i]]);
+					}
+				}
+				(function eachEntry (i) {
+					if (i >= entries.length) { return callback(null, items); }
+					that.account(entries[i].account.toString(), function (err, account) {
+						entries[i].accountName = account.name;
+						entries[i].accountNumber = account.number;
+						eachEntry(i + 1);
+					});
+				}(0));
 			});
 	});
 };
