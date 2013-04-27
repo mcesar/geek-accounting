@@ -269,6 +269,7 @@ Service.prototype.transactions = function (coaId, callback) {
 
 Service.prototype.addTransaction = function (coaId, transaction, callback) {
 	transaction.date = new Date(transaction.date);
+	transaction.timestamp = new Date();
 	this.transactionValidation(transaction, function (err, validation) {
 		var props = [ 'debits', 'credits' ], i;
 		if (err) { return callback(err); }
