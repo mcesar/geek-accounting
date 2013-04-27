@@ -286,6 +286,17 @@ Service.prototype.addTransaction = function (coaId, transaction, callback) {
 	});
 };
 
+Service.prototype.journal = function (coaId, from, to, callback) {
+	db.conn().collection('transactions_' + coaId, function (err, collection) {
+		if (err) { return callback(err); }
+		collection.find({ date: { $gte: from , $lte: to } }).
+			sort({ date: 1 }).
+			toArray(function (err, items) {
+				callback(err, items);
+			});
+	});
+};
+
 function chartsOfAccounts (req, res, next) {
 	new Service().chartsOfAccounts(function (err, items) {
 		if (err) { return next(err); }
@@ -360,6 +371,20 @@ function addTransaction (req, res, next) {
 	);
 }
 
+function journal (req, res, next) {
+	var from = new Date(req.query.from), to = new Date(req.query.to);
+	if (isNaN(from.getTime())) {
+		return next(new Error("'From' date must be informed"));
+	}
+	if (isNaN(to.getTime())) {
+		return next(new Error("'To' date must be informed"));
+	}
+	new Service().journal(req.params.id, from, to, function (err, journal) {
+		if (err) { return next(err); }
+		res.send(journal);
+	});
+}
+
 exports.Service = Service;
 
 exports.setup = function (app) {
@@ -372,4 +397,5 @@ exports.setup = function (app) {
 	app.put('/charts-of-accounts/:id/accounts/:accountId', updateAccount);
 	app.get('/charts-of-accounts/:id/transactions', transactions);
 	app.post('/charts-of-accounts/:id/transactions', addTransaction);
+	app.get('/charts-of-accounts/:id/journal', journal);
 };
