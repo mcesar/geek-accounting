@@ -290,7 +290,7 @@ Service.prototype.journal = function (coaId, from, to, callback) {
 	db.conn().collection('transactions_' + coaId, function (err, collection) {
 		if (err) { return callback(err); }
 		collection.find({ date: { $gte: from , $lte: to } }).
-			sort({ date: 1 }).
+			sort({ date: 1, timestamp: 1 }).
 			toArray(function (err, items) {
 				callback(err, items);
 			});
