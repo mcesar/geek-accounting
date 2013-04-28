@@ -16,8 +16,7 @@ function Service () {
 		{ name: 'salesTax', classification: 'income statement attribute' },
 		{ name: 'cost', classification: 'income statement attribute' },
 		{ name: 'incomeTax', classification: 'income statement attribute' },
-		{ name: 'profitFromAssociates', 
-			classification: 'income statement attribute' }
+		{ name: 'dividends', classification: 'income statement attribute' }
 	];
 }
 
@@ -26,7 +25,7 @@ Service.prototype.chartOfAccountsValidation = function (coa) {
 };
 
 Service.prototype.accountValidation = function (coa, account, callback) {
-	var that = this;
+	var that = this, incomeStatementFlagsCount = 0;
 	if (utils.isEmpty(account.number)) {
 		return callback(null, "The number must be informed"); 
 	}
@@ -47,6 +46,15 @@ Service.prototype.accountValidation = function (coa, account, callback) {
 	}
 	if (account.debitBalance === account.creditBalance) {
 		return callback(null, "The normal balance must be either debit or credit");
+	}
+	this.inheritedProperties.forEach(function (prop) {
+		if (prop.classification === 'income statement attribute' && 
+					account[prop.name]) {
+			incomeStatementFlagsCount++;
+		}
+	});
+	if (incomeStatementFlagsCount > 1) {
+		return callback(null, "Only one income statement attribute is allowed");
 	}
 	if (typeof account.parent !== 'undefined') {
 		that.account(account.parent.toString(), function (err, parentAccount) {
@@ -336,6 +344,7 @@ function addChartOfAccounts (req, res, next) {
 function accounts (req, res, next) {
 	new Service().chartOfAccounts(req.params.id, function (err, coa) {
 		if (err) { return next(err); }
+		if (coa === null) { return res.send(500, 'Chart of accounts not found'); }
 		res.send(coa.accounts);
 	});
 }
