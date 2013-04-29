@@ -320,6 +320,87 @@ Service.prototype.journal = function (coaId, from, to, callback) {
 	});
 };
 
+Service.prototype.balanceIncrement = function (account, entry, prop) {
+	if (account[prop.slice(0, -1) + 'Balance']) {
+		return entry.value;
+	} else {
+		return -entry.value;
+	}
+}
+
+Service.prototype.ledger = function (coaId, accountId, from, to, callback) {
+	var that = this;
+	db.conn().collection('transactions_' + coaId, function (err, collection) {
+		if (err) { return callback(err); }
+		that.account(accountId, function (err, account) {
+			var result = { 
+					account: 
+						{ _id: accountId, number: account.number, name: account.name, 
+							debitBalance: account.debitBalance, 
+							creditBalance: account.creditBalance
+						}, 
+					entries: [] 
+				};
+			collection.
+				find({ 
+					date: { $lte: to },
+					$or: [ 
+						{ debits: { $elemMatch: { account: db.bsonId(accountId) } } },
+						{ credits: { $elemMatch: { account: db.bsonId(accountId) } } } 
+					] }).
+				sort({ date: 1, timestamp: 1 }).
+				toArray(function (err, items) {
+					var props = [ 'debits', 'credits' ], prop, balance = 0, 
+						runningBalance = 0, entry, i, j, k;
+					if (err) { return callback(err); }
+					for (i = 0; i < items.length; i += 1) {
+						for (j = 0; j < props.length; j += 1) {
+							for (k = 0; k < items[i][props[j]].length; k += 1) {
+								if (items[i][props[j]][k].account.toString() === accountId) {
+									runningBalance += that.balanceIncrement(account, 
+											items[i][props[j]][k], props[j]);
+									if (items[i].date < from) {
+										balance = runningBalance;
+									} else {
+										entry = { 
+											date: items[i].date, 
+											memo: items[i].memo,
+											counterpart: {} 
+										};
+										entry[props[j].slice(0, -1)] = items[i][props[j]][k].value;
+										entry.balance = runningBalance;
+										if (items[i][props[1 - j]].length === 1) {
+											entry.counterpart._id = 
+												items[i][props[1 - j]][0].account;
+										} else {
+											entry.counterpart.name = 'many';
+										}
+										result.entries.push(entry);
+									}
+								}
+							}
+						}
+					}
+					result.balance = balance;
+					(function eachEntry (i) {
+						if (i >= result.entries.length) { return callback(null, result); }
+						if (result.entries[i].counterpart._id) {
+							that.account(result.entries[i].counterpart._id.toString(), 
+								function (err, account) {
+									result.entries[i].counterpart.name = account.name;
+									result.entries[i].counterpart.number = account.number;
+									eachEntry(i + 1);
+								}
+							);							
+						} else {
+							eachEntry(i + 1);
+						}
+					}(0));
+				});
+		});
+	});
+};
+
 function chartsOfAccounts (req, res, next) {
 	new Service().chartsOfAccounts(function (err, items) {
 		if (err) { return next(err); }
@@ -395,18 +476,39 @@ function addTransaction (req, res, next) {
 	);
 }
 
-function journal (req, res, next) {
-	var from = new Date(req.query.from), to = new Date(req.query.to);
+function verifyTimespan (from, to) {
 	if (isNaN(from.getTime())) {
-		return next(new Error("'From' date must be informed"));
+		return "'From' date must be informed";
 	}
 	if (isNaN(to.getTime())) {
-		return next(new Error("'To' date must be informed"));
+		return "'To' date must be informed";
+	}
+}
+
+function journal (req, res, next) {
+	var from = new Date(req.query.from), to = new Date(req.query.to),
+		timespanVerification = verifyTimespan(from, to);
+	if (timespanVerification) {
+		return next(new Error(timespanVerification));
 	}
 	new Service().journal(req.params.id, from, to, function (err, journal) {
 		if (err) { return next(err); }
 		res.send(journal);
 	});
+}
+
+function ledger (req, res, next) {
+	var from = new Date(req.query.from), to = new Date(req.query.to),
+		timespanVerification = verifyTimespan(from, to);
+	if (timespanVerification) {
+		return next(new Error(timespanVerification));
+	}
+	new Service().ledger(req.params.id, req.params.accountId, from, to, 
+		function (err, journal) {
+			if (err) { return next(err); }
+			res.send(journal);
+		}
+	);
 }
 
 exports.Service = Service;
@@ -422,4 +524,5 @@ exports.setup = function (app) {
 	app.get('/charts-of-accounts/:id/transactions', transactions);
 	app.post('/charts-of-accounts/:id/transactions', addTransaction);
 	app.get('/charts-of-accounts/:id/journal', journal);
+	app.get('/charts-of-accounts/:id/accounts/:accountId/ledger', ledger);
 };
