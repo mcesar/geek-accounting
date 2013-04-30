@@ -11,10 +11,11 @@ function Service () {
 	this.inheritedProperties = [ 
 		{ name: 'balanceSheet', classification: 'financial statement' }, 
 		{ name: 'incomeStatement', classification: 'financial statement' },
-		{ name: 'operational', classification: 'income statement attribute' },
+		{ name: 'operating', classification: 'income statement attribute' },
 		{ name: 'deduction', classification: 'income statement attribute' },
 		{ name: 'salesTax', classification: 'income statement attribute' },
 		{ name: 'cost', classification: 'income statement attribute' },
+		{ name: 'nonOperatingTax', classification: 'income statement attribute' },
 		{ name: 'incomeTax', classification: 'income statement attribute' },
 		{ name: 'dividends', classification: 'income statement attribute' }
 	];
@@ -112,6 +113,9 @@ Service.prototype.transactionValidation = function (transaction, callback) {
 				function (err, account) {
 					if (account === null) {
 						return callback(null, 'Account not found');
+					}
+					if (!account.analytic) {
+						return callback(null, 'The account must be analytic');
 					}
 					sum[props[i]] += transaction[props[i]][j].value;
 					validateEntries(i, j + 1, callback);
@@ -401,9 +405,11 @@ Service.prototype.ledger = function (coaId, accountId, from, to, callback) {
 	});
 };
 
-Service.prototype.balanceSheet = function (coaId, at, callback) {
+Service.prototype.balances = function (coaId, from, to, accountFilter, 
+		callback) {
 	var that = this, accountsMap = {}, result = [];
-	function incrementParentBalance(parent, entry, prop) {
+	function incrementParentBalance (parent, 
+			entry, prop) {
 		if (!parent) { return; }
 		var parentItem = accountsMap[parent.toString()];
 		parentItem.value += that.balanceIncrement(parentItem.account, entry, prop);
@@ -419,7 +425,7 @@ Service.prototype.balanceSheet = function (coaId, at, callback) {
 		}
 		db.conn().collection('transactions_' + coaId, function (err, collection) {
 			if (err) { return callback(err); }
-			collection.find({ date: { $lte: at } }).
+			collection.find({ date: { $gte: from, $lte: to } }).
 				sort({ date: 1, timestamp: 1 }).
 				toArray(function (err, items) {
 					var props = [ 'debits', 'credits' ], entry, resultItem, i, j, k;
@@ -445,9 +451,100 @@ Service.prototype.balanceSheet = function (coaId, at, callback) {
 		});
 	}
 	db.findOne('charts_of_accounts', 
-		{ _id: db.bsonId(coaId), 
-			accounts: { $elemMatch: { balanceSheet: true } } }, 
+		{ _id: db.bsonId(coaId), accounts: { $elemMatch: accountFilter } }, 
 		afterFindAccounts);
+};
+
+Service.prototype.balanceSheet = function (coaId, at, callback) {
+	this.balances(coaId, new Date('1000-01-01'), at, { balanceSheet: true }, 
+		callback);
+};
+
+Service.prototype.incomeStatement = function (coaId, from, to, callback) {
+	this.balances(coaId, from, to, { incomeStatement: true }, 
+		function (err, balances) {
+			var result = {
+				grossRevenue: { balance: 0, details: [] },
+				deduction: { balance: 0, details: [] },
+				salesTax: { balance: 0, details: [] },
+				netRevenue: { balance: 0, details: [] },
+				cost: { balance: 0, details: [] },
+				grossProfit: { balance: 0, details: [] },
+				operatingExpense: { balance: 0, details: [] },
+				netOperatingIncome: { balance: 0, details: [] },
+				nonOperatingRevenue: { balance: 0, details: [] },
+				nonOperatingExpense: { balance: 0, details: [] },
+				nonOperatingTax: { balance: 0, details: [] },
+				incomeBeforeIncomeTax: { balance: 0, details: [] },
+				incomeTax: { balance: 0, details: [] },
+				dividends: { balance: 0, details: [] },
+				netIncome: { balance: 0, details: [] }
+			}, 
+			revenueRoots = [], expenseRoots = [], i;
+
+			function isDescendent (account, parents) {
+				var i;
+				for (i = 0; i < parents.length; i += 1) {
+					if (account.number.indexOf(parents[i].number) === 0) {
+						return true;
+					}
+				}
+				return false;
+			}
+
+			function addBalance (resultItem, balance) {
+				resultItem.balance += balance.value;
+				resultItem.details.push(balance);
+			}
+
+			if (err) { return callback(err); }
+			if (!balances) { return callback(); }
+			for (i = 0; i < balances.length; i += 1) {
+				if (!balances[i].account.parent) {
+					if (balances[i].account.creditBalance) {
+						revenueRoots.push(balances[i].account);
+					} else {
+						expenseRoots.push(balances[i].account);
+					}
+				}
+			}
+			for (i = 0; i < balances.length; i += 1) {
+				if (balances.account.operating && 
+							isDescendent(balance.account, revenueRoots)) {
+					addBalance(result.grossRevenue, balances[i]);
+				} else if (balances.account.deduction) {
+					addBalance(result.deduction, balances[i]);
+				} else if (balances.account.salesTax) {
+					addBalance(result.salesTax, balances[i]);
+				} else if (balances.account.cost) {
+					addBalance(result.cost, balances[i]);
+				} else if (balances.account.operating && 
+							isDescendent(balance.account, expenseRoots)) {
+					addBalance(result.operatingExpense, balances[i]);
+				} else if (balances.account.nonOperatingTax) {
+					addBalance(result.nonOperatingTax, balances[i]);
+				} else if (balances.account.incomeTax) {
+					addBalance(result.incomeTax, balances[i]);
+				} else if (balances.account.dividends) {
+					addBalance(result.dividends, balances[i]);
+				} else if (isDescendent(balance.account, revenueRoots)) {
+					addBalance(result.nonOperatingRevenue, balances[i]);
+				} else {
+					addBalance(result.nonOperatingExpense, balances[i]);
+				}
+			}
+			result.netRevenue = 
+				result.grossRevenue - result.deduction - result.salesTax;
+			result.grossProfit = result.netRevenue - result.cost;
+			result.netOperatingIncome = result.grossProfit - result.operatingExpense;
+			result.incomeBeforeIncomeTax = 
+				result.netOperatingIncome + result.nonOperatingRevenue -
+				result.nonOperatingExpense - result.nonOperatingTax;
+			result.netIncome = result.incomeBeforeIncomeTax - 
+				result.incomeTax - result.dividends;
+			callback(null, result);
+		}
+	);
 };
 
 function chartsOfAccounts (req, res, next) {
@@ -571,6 +668,20 @@ function balanceSheet (req, res, next) {
 	});
 }
 
+function incomeStatement (req, res, next) {
+	var from = new Date(req.query.from), to = new Date(req.query.to),
+		timespanVerification = verifyTimespan(from, to);
+	if (timespanVerification) {
+		return next(new Error(timespanVerification));
+	}
+	new Service().incomeStatement(req.params.id, from, to, 
+		function (err, statement) {
+			if (err) { return next(err); }
+			res.send(statement);
+		}
+	);
+}
+
 exports.Service = Service;
 
 exports.setup = function (app) {
@@ -586,4 +697,5 @@ exports.setup = function (app) {
 	app.get('/charts-of-accounts/:id/journal', journal);
 	app.get('/charts-of-accounts/:id/accounts/:accountId/ledger', ledger);
 	app.get('/charts-of-accounts/:id/balance-sheet', balanceSheet);
+	app.get('/charts-of-accounts/:id/income-statement', incomeStatement);
 };

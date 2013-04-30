@@ -19,7 +19,7 @@ app.configure(function () {
 	});
 	app.use(function (err, req, res, next) {
 		console.error(err.stack);
-		res.send(500, 'Erro interno: ' + err.message);
+		res.send(500, 'Internal error: ' + err.message);
 	});
 
 	fs.readdir('./plugins', function (err, files) {
