@@ -1,0 +1,108 @@
+#!/usr/local/bin/node
+var util = require('util'); 
+	argv = require('optimist').argv,
+	exec = require('child_process').exec
+
+var GET = 'curl -k -u admin:admin https://localhost:8001/charts-of-accounts%s'
+var POST = 'curl -k -u admin:admin -X POST -H \'Content-Type: application/json\' -d \'{ %s }\' https://localhost:8001/charts-of-accounts%s'
+
+var COA_ID = '51797050e655b20000000001';
+
+var flags, flagsAndParent, debits, credits, debitsAsString, creditsAsString, i;
+
+function checkErrorAndPrintId (err, stdout, stderr) {
+	if (err) {
+		console.log(stderr);
+	} else {
+		if (stdout.indexOf('Internal error') === 0 || 
+					stdout.indexOf('Error:') === 0) {
+			return console.log(stdout);
+		}
+		console.log(JSON.parse(stdout)._id);
+	}
+}
+
+switch (argv._[0]) {
+	case 'charts-of-accounts':
+		exec(util.format(GET, ''), function (err, stdout, stderr) {
+			var result, i;
+			if (err) {
+				console.log(stderr);
+			} else {
+				result = JSON.parse(stdout);
+				for (i = 0; i < result.length; i += 1) {
+					console.log(result[i].name + '\t' + result[i]._id);
+				}
+			}
+		});
+		break;
+	case 'accounts':
+		exec(util.format(GET, '/' + COA_ID + '/accounts'), 
+			function (err, stdout, stderr) {
+				var result, i;
+				if (err) {
+					console.log(stderr);
+				} else {
+					result = JSON.parse(stdout);
+					for (i = 0; i < result.length; i += 1) {
+						console.log(
+							result[i].number + "\t" + result[i].name + "\t" + result[i]._id);
+					}
+				}
+			}
+		);
+		break;
+	case 'add-account':
+		if (!argv.name && !argv.n) { 
+			return console.log("--name or -n is required"); 
+		}
+		if (!argv.number && !argv['#']) { 
+			return console.log("--number or -# is required"); 
+		}
+		if (!argv.flags && !argv.f) { 
+			return console.log("--flags or -f is required"); 
+		}
+		flags = (argv.flags || argv.f).split(',');
+		flagsAndParent = '';
+		for (i = 0; i < flags.length; i += 1) {
+			flagsAndParent += ', "' + flags[i] + '": true';
+		}
+		if (argv.parent || argv.p) {
+			flagsAndParent += ', "parent": "' + (argv.parent || argv.p) + '"';
+		} 
+		exec(util.format(POST, 
+			'"name":"' + (argv.name || argv.n) + '", ' + 
+			'"number": "' + (argv.number || argv['#']) + '"' + 
+			flagsAndParent, 
+			'/' + COA_ID + '/accounts'), 
+			checkErrorAndPrintId
+		);
+		break;
+	case 'add-transaction':
+		//curl -k -u admin:admin -X POST -H 'Content-Type: application/json' -d '{ "debits": [ { "account": "517975be60a4430000000001", "value":1 } ], "credits": [ { "account": "517a9183938e630000000002", "value": 1 } ], "date": "2013-04-26", "memo":"test" }' https://localhost:8001/charts-of-accounts/51797050e655b20000000001/transactions
+		if (!argv.debits && !argv.d) { 
+			return console.log("--debits or -d is required"); 
+		}
+		if (!argv.credits && !argv.c) { 
+			return console.log("--credits or -c is required"); 
+		}
+		if (!argv.at && !argv.a) { 
+			return console.log("--at or -a is required"); 
+		}
+		if (!argv.memo && !argv.m) { 
+			return console.log("--memo or -m is required"); 
+		}
+		debits = (argv.debits || argv.d).split(',');
+		credits = (argv.credits || argv.c).split(',');
+		debitsAsString = '';
+		creditsAsString = '';
+		exec(util.format(POST, 
+			'"debits": [' + debitsAsString + '], ' + 
+			'"credits": [' + creditsAsString + '], ' + 
+			'"date": "' + (argv.a || argv.d) + '", ' + 
+			'"memo": "' + (argv.m || argv.m) + '"', 
+			'/' + COA_ID + '/transactions'), 
+			checkErrorAndPrintId
+		);
+		break;
+}
