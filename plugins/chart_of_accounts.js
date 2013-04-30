@@ -402,63 +402,52 @@ Service.prototype.ledger = function (coaId, accountId, from, to, callback) {
 };
 
 Service.prototype.balanceSheet = function (coaId, at, callback) {
-	var that = this;
-	db.conn().collection('transactions_' + coaId, function (err, collection) {
-		if (err) { return callback(err); }
-		collection.find({ date: { $lte: at } }).
-			sort({ date: 1, timestamp: 1 }).
-			toArray(function (err, items) {
-				var props = [ 'debits', 'credits' ], result = {}, entries= [], entry, 
-					balanceItem, i, j, k;
-				for (i = 0; i < items.length; i += 1) {
-					for (j = 0; j < props.length; j += 1) {
-						for (k = 0; k < items[i][props[j]].length; k += 1) {
-							entry = items[i][props[j]][k];
-							if (!result[entry.account.toString()]) {
-								balanceItem = { 
-									account: entry.account,
-									value: 0,
-									balanceIncrements: [] 
-								};
-								result[entry.account.toString()] = balanceItem;
-								entries.push(balanceItem);
+	var that = this, accountsMap = {}, result = [];
+	function incrementParentBalance(parent, entry, prop) {
+		if (!parent) { return; }
+		var parentItem = accountsMap[parent.toString()];
+		parentItem.value += that.balanceIncrement(parentItem.account, entry, prop);
+		incrementParentBalance(parent.parent, entry, prop)
+	}
+	function afterFindAccounts (err, coa) {
+		if (!coa) { return callback(null, null); }
+		var accounts = coa.accounts, balanceItem, i;
+		for (i = 0; i < accounts.length; i += 1) {
+			balanceItem = { account: accounts[i], value: 0 };
+			accountsMap[accounts[i]._id.toString()] = balanceItem;
+			result.push(balanceItem);
+		}
+		db.conn().collection('transactions_' + coaId, function (err, collection) {
+			if (err) { return callback(err); }
+			collection.find({ date: { $lte: at } }).
+				sort({ date: 1, timestamp: 1 }).
+				toArray(function (err, items) {
+					var props = [ 'debits', 'credits' ], entry, resultItem, i, j, k;
+					for (i = 0; i < items.length; i += 1) {
+						for (j = 0; j < props.length; j += 1) {
+							for (k = 0; k < items[i][props[j]].length; k += 1) {
+								entry = items[i][props[j]][k];
+								resultItem = accountsMap[entry.account.toString()];
+								if (resultItem) {
+									resultItem.value += that.balanceIncrement(
+										resultItem.account, entry, props[j]);
+									incrementParentBalance(
+										resultItem.account.parent, entry, props[j]);
+								}
 							}
-							result[entry.account.toString()].balanceIncrements.push({
-								prop: props[j],
-								value: entry.value
-							});
 						}
 					}
-				}
-				(function eachItem (i) {
-					if (i >= entries.length) { 
-						entries = entries.sort(function (a, b) {
-							return a.localeCompare(b);
-						});
-						return callback(null, entries) 
-					};
-					that.account(entries[i].account.toString(), function (err, account) {
-						var j;
-						if (err) { return callback(err); }
-						for (j = 0; j < entries[i].balanceIncrements.length; j++) {
-							result[account._id.toString()].value += 
-								that.balanceIncrement(account, 
-									entries[i].balanceIncrements[j], 
-									entries[i].balanceIncrements[j].prop);
-						}
-						delete entries[i].balanceIncrements;
-						entries[i].account = {
-							_id: account._id,
-							number: account.number,
-							account: account.name,
-							debitBalance: account.debitBalance,
-							creditBalance: account.creditBalance
-						};
-						eachItem(i + 1);
+					result.sort(function (a, b) {
+						return a.account.number.localeCompare(b.account.number);
 					});
-				}(0));
-			});
-	});
+					return callback(null, result) 
+				});
+		});
+	}
+	db.findOne('charts_of_accounts', 
+		{ _id: db.bsonId(coaId), 
+			accounts: { $elemMatch: { balanceSheet: true } } }, 
+		afterFindAccounts);
 };
 
 function chartsOfAccounts (req, res, next) {
