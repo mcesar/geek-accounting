@@ -6,6 +6,8 @@
 	, "dependencies": {
 		"express": "*"
 		, "mongodb": "*"
+		, "optimist": "*"
+		, "string": "*"
 	}
 	, "devDependencies": {
 		"mocha": "0.3.x"

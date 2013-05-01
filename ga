@@ -1,14 +1,16 @@
 #!/usr/local/bin/node
-var util = require('util'); 
-	argv = require('optimist').argv,
-	exec = require('child_process').exec
 
-var GET = 'curl -k -u admin:admin https://localhost:8001/charts-of-accounts%s'
+var util = require('util'),
+	argv = require('optimist').argv,
+	exec = require('child_process').exec,
+	S = require('string')
+
+var GET = 'curl -k -u admin:admin "https://localhost:8001/charts-of-accounts%s"'
 var POST = 'curl -k -u admin:admin -X POST -H \'Content-Type: application/json\' -d \'{ %s }\' https://localhost:8001/charts-of-accounts%s'
 
-var COA_ID = '51797050e655b20000000001';
+var COA_ID = process.env.GA_DEFAULT_COA_ID;
 
-var flags, flagsAndParent, debits, credits, debitsAsString, creditsAsString, i;
+var flags, flagsAndParent, sizes, i;
 
 function checkErrorAndPrintId (err, stdout, stderr) {
 	if (err) {
@@ -22,37 +24,97 @@ function checkErrorAndPrintId (err, stdout, stderr) {
 	}
 }
 
+function value (obj, field) {
+	var arr = field.split('.'), result = obj, i;
+	for (i = 0; i < arr.length; i += 1) {
+		result = result[arr[i]];
+	}
+	return result;
+}
+
+function printResults (str, fields, headers, prefix) {
+	var result, sizes = [], line, headerLength, i, j;
+	if (!str || str.length === 0) { return; }
+	prefix = prefix || '';
+	if (typeof str === 'string') {
+		result = JSON.parse(str);
+	} else {
+		result = str;
+	}
+	if (headers) {
+		for (i = 0; i < headers.length; i += 1) {
+			sizes.push(headers[i].length);
+		}		
+	} else {
+		for (i = 0; i < fields.length; i += 1) {
+			sizes.push(0);
+		}				
+	}
+	for (i = 0; i < result.length; i += 1) {
+		for (j = 0; j < fields.length; j += 1) {
+			headerLength = 0;
+			if (headers) { headerLength = headers[j].length; }
+			sizes[j] = Math.max(
+				sizes[j], S(value(result[i], fields[j])).length, headerLength);
+		}
+	}
+	if (headers) {
+		line = '';
+		for (i = 0; i < headers.length; i += 1) {
+			if (line.length > 0) { line += ' '; }
+			line += S(headers[i]).padRight(sizes[i]).s;
+		}
+		console.log(prefix + line);
+		line = '';
+		for (i = 0; i < headers.length; i += 1) {
+			if (line.length > 0) { line += ' '; }
+			line += S('-').repeat(sizes[i]).s;
+		}
+		console.log(prefix + line);
+	}
+	for (i = 0; i < result.length; i += 1) {
+		line = '';
+		for (j = 0; j < fields.length; j += 1) {
+			if (line.length > 0) { line += ' '; }
+			line += S(value(result[i], fields[j])).padRight(sizes[j]).s;
+		}
+		console.log(prefix + line);
+	}
+}
+
 switch (argv._[0]) {
-	case 'charts-of-accounts':
+	case 'charts-of-accounts', 'coa':
 		exec(util.format(GET, ''), function (err, stdout, stderr) {
 			var result, i;
 			if (err) {
 				console.log(stderr);
 			} else {
-				result = JSON.parse(stdout);
-				for (i = 0; i < result.length; i += 1) {
-					console.log(result[i].name + '\t' + result[i]._id);
-				}
+				printResults(stdout, [ 'name', '_id' ], [ 'Name', 'Id' ]);
 			}
 		});
 		break;
-	case 'accounts':
+	case 'accounts', 'a':
 		exec(util.format(GET, '/' + COA_ID + '/accounts'), 
 			function (err, stdout, stderr) {
 				var result, i;
 				if (err) {
 					console.log(stderr);
 				} else {
-					result = JSON.parse(stdout);
-					for (i = 0; i < result.length; i += 1) {
-						console.log(
-							result[i].number + "\t" + result[i].name + "\t" + result[i]._id);
-					}
+					printResults(stdout, [ 'number', 'name', '_id' ], 
+						[ '#', 'Name', 'Id' ]);
 				}
 			}
 		);
 		break;
-	case 'add-account':
+	case 'add-chart-of-accounts', 'ac':
+		if (!argv.name && !argv.n) { 
+			return console.log("--name or -n is required"); 
+		}
+		exec(util.format(POST, 
+			'"name":"' + (argv.name || argv.n) + '"', '/'), checkErrorAndPrintId
+		);
+		break;
+	case 'add-account', 'aa':
 		if (!argv.name && !argv.n) { 
 			return console.log("--name or -n is required"); 
 		}
@@ -78,8 +140,17 @@ switch (argv._[0]) {
 			checkErrorAndPrintId
 		);
 		break;
-	case 'add-transaction':
-		//curl -k -u admin:admin -X POST -H 'Content-Type: application/json' -d '{ "debits": [ { "account": "517975be60a4430000000001", "value":1 } ], "credits": [ { "account": "517a9183938e630000000002", "value": 1 } ], "date": "2013-04-26", "memo":"test" }' https://localhost:8001/charts-of-accounts/51797050e655b20000000001/transactions
+	case 'add-transaction', 'at':
+		function entriesString (entries) {
+			var result = '', entry, i;
+			for (i = 0; i < entries.length; i += 1) {
+				if (i > 0) { result += ', '; }
+				entry = entries[i].split(':');
+				result += '{ "account": "' + entry[0] + '", ' + 
+														 '"value": ' + entry[1] + "} ";
+			}
+			return result;
+		}
 		if (!argv.debits && !argv.d) { 
 			return console.log("--debits or -d is required"); 
 		}
@@ -92,17 +163,81 @@ switch (argv._[0]) {
 		if (!argv.memo && !argv.m) { 
 			return console.log("--memo or -m is required"); 
 		}
-		debits = (argv.debits || argv.d).split(',');
-		credits = (argv.credits || argv.c).split(',');
-		debitsAsString = '';
-		creditsAsString = '';
 		exec(util.format(POST, 
-			'"debits": [' + debitsAsString + '], ' + 
-			'"credits": [' + creditsAsString + '], ' + 
+			'"debits": [' + 
+					entriesString((argv.debits || argv.d).split(',')) + '], ' + 
+			'"credits": [' + 
+					entriesString((argv.credits || argv.c).split(',')) + '], ' + 
 			'"date": "' + (argv.a || argv.d) + '", ' + 
 			'"memo": "' + (argv.m || argv.m) + '"', 
 			'/' + COA_ID + '/transactions'), 
 			checkErrorAndPrintId
 		);
+		break;
+	case 'balance-sheet', 'bs':
+		if (!argv.at && !argv.a) { 
+			return console.log("--at or -a is required"); 
+		}
+		exec(util.format(GET, '/' + COA_ID + 
+				'/balance-sheet?at=' + (argv.at || argv.a)), 
+			function (err, stdout, stderr) {
+				var result, i;
+				if (err) {
+					console.log(stderr);
+				} else {
+					printResults(stdout, 
+						[ 'account.number', 'account.name', 'value' ], 
+						[ '#', 'Name', 'Balance' ]);
+				}
+			}
+		);
+		break;
+	case 'income-statement', 'is':
+		if (!argv.from && !argv.f) { 
+			return console.log("--from or -f is required"); 
+		}
+		if (!argv.to && !argv.t) { 
+			return console.log("--to or -t is required"); 
+		}
+		exec(util.format(GET, '/' + COA_ID + 
+				'/income-statement?from=' + (argv.from || argv.f) + 
+				'&to=' + (argv.to || argv.t)), 
+			function (err, stdout, stderr) {
+				var result, i;
+				if (err) {
+					console.log(stderr);
+				} else {
+					result = JSON.parse(stdout);
+					function printLine (prop, label) {
+						if (result[prop]) {
+							console.log(label + ': ' + result[prop].balance);
+							if (result[prop].details && result[prop].details.length > 0) {
+								printResults(result[prop].details, 
+									[ 'account.number', 'account.name', 'value' ], 
+									null, '    ');
+							}
+						}
+					}
+					printLine('grossRevenue', 'Gross revenue');
+					printLine('deduction', 'Gross revenue');
+					printLine('salesTax', 'Sales tax');
+					printLine('netRevenue', 'Net revenue');
+					printLine('cost', 'Cost');
+					printLine('grossProfit', 'Gross profit');
+					printLine('operatingExpense', 'Operating expense');
+					printLine('netOperatingIncome', 'Net operating expense');
+					printLine('nonOperatingRevenue', 'Non operating revenue');
+					printLine('nonOperatingExpense', 'Non operating expense');
+					printLine('nonOperatingTax', 'Non operating tax');
+					printLine('incomeBeforeIncomeTax', 'Income before income tax');
+					printLine('incomeTax', 'Income tax');
+					printLine('dividends', 'Dividends');
+					printLine('netIncome', 'Net income');					
+ 				}
+			}
+		);
+		break;
+	default:
+		console.log('Invalid command: ' + argv._[0]);
 		break;
 }
