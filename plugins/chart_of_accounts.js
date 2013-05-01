@@ -408,12 +408,12 @@ Service.prototype.ledger = function (coaId, accountId, from, to, callback) {
 Service.prototype.balances = function (coaId, from, to, accountFilter, 
 		callback) {
 	var that = this, accountsMap = {}, result = [];
-	function incrementParentBalance (parent, 
-			entry, prop) {
+	function incrementParentBalance (parent, entry, prop) {
 		if (!parent) { return; }
 		var parentItem = accountsMap[parent.toString()];
 		parentItem.value += that.balanceIncrement(parentItem.account, entry, prop);
-		incrementParentBalance(parent.parent, entry, prop)
+		incrementParentBalance(accountsMap[parent.toString()].account.parent, 
+			entry, prop)
 	}
 	function afterFindAccounts (err, coa) {
 		if (!coa) { return callback(null, null); }
@@ -490,7 +490,7 @@ Service.prototype.incomeStatement = function (coaId, from, to, callback) {
 				dividends: { balance: 0, details: [] },
 				netIncome: { balance: 0, details: [] }
 			}, 
-			revenueRoots = [], expenseRoots = [], i;
+			revenueRoots = [], expenseRoots = [], prop, i;
 
 			function isDescendent (account, parents) {
 				var i;
@@ -503,8 +503,10 @@ Service.prototype.incomeStatement = function (coaId, from, to, callback) {
 			}
 
 			function addBalance (resultItem, balance) {
-				resultItem.balance += balance.value;
-				resultItem.details.push(balance);
+				if (balance.account.analytic && balance.value > 0) {
+					resultItem.balance += balance.value;
+					resultItem.details.push(balance);
+				}
 			}
 
 			if (err) { return callback(err); }
@@ -556,6 +558,15 @@ Service.prototype.incomeStatement = function (coaId, from, to, callback) {
 				result.nonOperatingExpense.balance - result.nonOperatingTax.balance;
 			result.netIncome.balance = result.incomeBeforeIncomeTax.balance - 
 				result.incomeTax.balance - result.dividends.balance;
+			for (prop in result) {
+				if (result.hasOwnProperty(prop)) {
+					if (result[prop].balance === 0 && 
+							result[prop].details.length === 0 &&
+							prop !== 'netIncome') {
+						delete result[prop];
+					}
+				}
+			}
 			callback(null, result);
 		}
 	);
