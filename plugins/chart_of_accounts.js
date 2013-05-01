@@ -450,18 +450,28 @@ Service.prototype.balances = function (coaId, from, to, accountFilter,
 				});
 		});
 	}
-	db.findOne('charts_of_accounts', 
-		{ _id: db.bsonId(coaId), accounts: { $elemMatch: accountFilter } }, 
-		afterFindAccounts);
+
+	db.conn().collection('charts_of_accounts', function (err, collection) {
+		collection.aggregate(
+			{ $match: { '_id': db.bsonId(coaId) } },
+			{ $unwind: '$accounts' },
+			{ $match: accountFilter },
+			{ $group: { _id: '$_id', 'accounts': {$addToSet:'$accounts'} } },
+			function (err, result) {
+				if (err) { return callback(err); }
+				afterFindAccounts(null, result[0]);
+			}
+		);
+	});
 };
 
 Service.prototype.balanceSheet = function (coaId, at, callback) {
-	this.balances(coaId, new Date('1000-01-01'), at, { balanceSheet: true }, 
-		callback);
+	this.balances(coaId, new Date('1000-01-01'), at, 
+		{ 'accounts.balanceSheet': true }, callback);
 };
 
 Service.prototype.incomeStatement = function (coaId, from, to, callback) {
-	this.balances(coaId, from, to, { incomeStatement: true }, 
+	this.balances(coaId, from, to, { 'accounts.incomeStatement': true }, 
 		function (err, balances) {
 			var result = {
 				grossRevenue: { balance: 0, details: [] },
@@ -509,39 +519,43 @@ Service.prototype.incomeStatement = function (coaId, from, to, callback) {
 				}
 			}
 			for (i = 0; i < balances.length; i += 1) {
-				if (balances.account.operating && 
-							isDescendent(balance.account, revenueRoots)) {
+				if (balances[i].account.operating && 
+							isDescendent(balances[i].account, revenueRoots)) {
 					addBalance(result.grossRevenue, balances[i]);
-				} else if (balances.account.deduction) {
+				} else if (balances[i].account.deduction) {
 					addBalance(result.deduction, balances[i]);
-				} else if (balances.account.salesTax) {
+				} else if (balances[i].account.salesTax) {
 					addBalance(result.salesTax, balances[i]);
-				} else if (balances.account.cost) {
+				} else if (balances[i].account.cost) {
 					addBalance(result.cost, balances[i]);
-				} else if (balances.account.operating && 
-							isDescendent(balance.account, expenseRoots)) {
+				} else if (balances[i].account.operating && 
+							isDescendent(balances[i].account, expenseRoots)) {
 					addBalance(result.operatingExpense, balances[i]);
-				} else if (balances.account.nonOperatingTax) {
+				} else if (balances[i].account.nonOperatingTax) {
 					addBalance(result.nonOperatingTax, balances[i]);
-				} else if (balances.account.incomeTax) {
+				} else if (balances[i].account.incomeTax) {
 					addBalance(result.incomeTax, balances[i]);
-				} else if (balances.account.dividends) {
+				} else if (balances[i].account.dividends) {
 					addBalance(result.dividends, balances[i]);
-				} else if (isDescendent(balance.account, revenueRoots)) {
+				} else if (isDescendent(balances[i].account, revenueRoots)) {
 					addBalance(result.nonOperatingRevenue, balances[i]);
 				} else {
 					addBalance(result.nonOperatingExpense, balances[i]);
 				}
 			}
-			result.netRevenue = 
-				result.grossRevenue - result.deduction - result.salesTax;
-			result.grossProfit = result.netRevenue - result.cost;
-			result.netOperatingIncome = result.grossProfit - result.operatingExpense;
-			result.incomeBeforeIncomeTax = 
-				result.netOperatingIncome + result.nonOperatingRevenue -
-				result.nonOperatingExpense - result.nonOperatingTax;
-			result.netIncome = result.incomeBeforeIncomeTax - 
-				result.incomeTax - result.dividends;
+			result.netRevenue.balance = 
+				result.grossRevenue.balance - result.deduction.balance - 
+				result.salesTax.balance;
+			result.grossProfit.balance = result.netRevenue.balance - 
+				result.cost.balance;
+			result.netOperatingIncome.balance = result.grossProfit.balance - 
+				result.operatingExpense.balance;
+			result.incomeBeforeIncomeTax.balance = 
+				result.netOperatingIncome.balance + 
+				result.nonOperatingRevenue.balance -
+				result.nonOperatingExpense.balance - result.nonOperatingTax.balance;
+			result.netIncome.balance = result.incomeBeforeIncomeTax.balance - 
+				result.incomeTax.balance - result.dividends.balance;
 			callback(null, result);
 		}
 	);
