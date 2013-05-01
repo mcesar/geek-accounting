@@ -1,11 +1,13 @@
 /*jslint node: true */
 'use strict';
 
+var http = require('http');
 var https = require('https');
 var express = require('express');
 var fs = require('fs');
 var db = require('./lib/database').db;
-var config = require('./config/config');
+var config = 
+	require('./config/' + (process.env.GA_CONFIG_PREFIX || '') + 'config');
 
 var app = express();
 
@@ -32,13 +34,19 @@ app.configure(function () {
 });
 
 db.open(function (err) {
+	var options;
+
 	if (err) { return console.error(err.stack); }
 
-	var options = {
-	  key: fs.readFileSync('config/privatekey.pem'),
-	  cert: fs.readFileSync('config/certificate.pem')
-	};
+	if (config.ssl) {
+		options = {
+		  key: fs.readFileSync('config/privatekey.pem'),
+		  cert: fs.readFileSync('config/certificate.pem')
+		};
+		https.createServer(options, app).listen(config.webServerPort);
+	} else {
+		http.createServer(app).listen(config.webServerPort);
+	}
 
-	https.createServer(options, app).listen(config.webServerPort);
 	console.log('server listening');
 });

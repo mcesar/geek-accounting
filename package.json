@@ -1,19 +1,24 @@
 {
-	"name": "geek-accounting"
-	, "description": "Geek Accounting"
-	, "version": "0.0.1"
-	, "private": true
-	, "dependencies": {
-		"express": "*"
-		, "mongodb": "*"
-		, "optimist": "*"
-		, "string": "*"
-	}
-	, "devDependencies": {
+	"name": "geek-accounting",
+	"description": "Geek Accounting",
+	"version": "0.0.1-8",
+	"private": true,
+	"dependencies": {
+		"express": "*",
+		"mongodb": "*",
+		"optimist": "*",
+		"string": "*"
+	},
+	"devDependencies": {
 		"mocha": "0.3.x"
+	},
+	"scripts": {
+		"test": "make test",
+		"start": "node app.js"
+	},
+	"main": "app",
+	"subdomain": "geek-accounting",
+	"engines": {
+		"node": ">=0.8.x"
 	}
-	, "scripts": {
-    	"test": "make test"
-  	}
-	, "main": "app"
 }
