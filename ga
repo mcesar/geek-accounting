@@ -5,19 +5,27 @@ var util = require('util'),
 	exec = require('child_process').exec,
 	S = require('string')
 
-var GET = 'curl -k -u admin:admin "https://localhost:8001/charts-of-accounts%s"'
-var POST = 'curl -k -u admin:admin -X POST -H \'Content-Type: application/json\' -d \'{ %s }\' https://localhost:8001/charts-of-accounts%s'
+var URL = process.env.GA_DEFAULT_URL || 'https://localhost:8001';
+
+var GET = 'curl -k -u admin:admin "' + URL + '/charts-of-accounts%s"'
+var POST = 'curl -k -u admin:admin -X POST ' + 
+							'-H \'Content-Type: application/json\' -d \'{ %s }\' ' + 
+							URL + '/charts-of-accounts%s'
 
 var COA_ID = process.env.GA_DEFAULT_COA_ID;
 
 var flags, flagsAndParent, sizes, i;
 
+function isError (stdout) {
+	return stdout.indexOf('Internal error') === 0 || 
+		stdout.indexOf('Error:') === 0
+}
+
 function checkErrorAndPrintId (err, stdout, stderr) {
 	if (err) {
 		console.log(stderr);
 	} else {
-		if (stdout.indexOf('Internal error') === 0 || 
-					stdout.indexOf('Error:') === 0) {
+		if (isError(stdout)) {
 			return console.log(stdout);
 		}
 		console.log(JSON.parse(stdout)._id);
@@ -35,6 +43,8 @@ function value (obj, field) {
 function printResults (str, fields, headers, prefix) {
 	var result, sizes = [], line, headerLength, i, j;
 	if (!str || str.length === 0) { return; }
+	if (isError(str)) { return console.log(stdout); }
+
 	prefix = prefix || '';
 	if (typeof str === 'string') {
 		result = JSON.parse(str);
