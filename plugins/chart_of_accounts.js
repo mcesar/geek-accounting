@@ -298,6 +298,23 @@ Service.prototype.addTransaction = function (coaId, transaction, callback) {
 	});
 };
 
+Service.prototype.deleteTransaction = function (coaId, txId, callback) {
+	db.findOne('transactions_' + coaId, { _id: db.bsonId(txId) }, 
+		function (err, tx) {
+			if (err) { return callback(err); }
+			if (tx === null) { return callback(new Error('Transaction not found')); }
+			db.conn().collection('transactions_' + coaId, 
+				function (err, collection) {
+					if (err) { return callback(err); }
+					collection.remove({ _id: db.bsonId(txId) }, function (err) {
+						callback(err);
+					});
+				}
+			);
+		}
+	);
+};
+
 Service.prototype.journal = function (coaId, from, to, callback) {
 	var that = this;
 	db.conn().collection('transactions_' + coaId, function (err, collection) {
@@ -647,6 +664,15 @@ function addTransaction (req, res, next) {
 	);
 }
 
+function deleteTransaction (req, res, next) {
+	new Service().deleteTransaction(req.params.id, req.params.txId, 
+		function (err) {
+			if (err) { return next(err); }
+			res.send({ ok: true });
+		}
+	);
+}
+
 function verifyTimespan (from, to) {
 	if (isNaN(from.getTime())) {
 		return "'From' date must be informed";
@@ -719,6 +745,7 @@ exports.setup = function (app) {
 	app.put('/charts-of-accounts/:id/accounts/:accountId', updateAccount);
 	app.get('/charts-of-accounts/:id/transactions', transactions);
 	app.post('/charts-of-accounts/:id/transactions', addTransaction);
+	app.delete('/charts-of-accounts/:id/transactions/:txId', deleteTransaction);
 	app.get('/charts-of-accounts/:id/journal', journal);
 	app.get('/charts-of-accounts/:id/accounts/:accountId/ledger', ledger);
 	app.get('/charts-of-accounts/:id/balance-sheet', balanceSheet);
