@@ -41,7 +41,7 @@ function value (obj, field) {
 }
 
 function printResults (str, fields, headers, prefix) {
-	var result, sizes = [], line, headerLength, i, j;
+	var result, sizes = [], line, headerLength, v, i, j;
 	if (!str || str.length === 0) { return; }
 	if (isError(str)) { return console.log(stdout); }
 
@@ -86,7 +86,9 @@ function printResults (str, fields, headers, prefix) {
 		line = '';
 		for (j = 0; j < fields.length; j += 1) {
 			if (line.length > 0) { line += ' '; }
-			line += S(value(result[i], fields[j])).padRight(sizes[j]).s;
+			v = value(result[i], fields[j]);
+			if (typeof v === 'undefined') { v = ''; }
+			line += S(v).padRight(sizes[j]).s;
 		}
 		console.log(prefix + line);
 	}
@@ -182,6 +184,27 @@ switch (argv._[0]) {
 			'"memo": "' + (argv.m || argv.m) + '"', 
 			'/' + COA_ID + '/transactions'), 
 			checkErrorAndPrintId
+		);
+		break;
+	case 'ledger', 'l':
+		if (!argv.account && !argv.a) { 
+			return console.log("--account or -a is required"); 
+		}
+		if (!argv.from && !argv.f) { 
+			return console.log("--from or -f is required"); 
+		}
+		if (!argv.to && !argv.t) { 
+			return console.log("--to or -t is required"); 
+		}
+		exec(util.format(GET, '/' + COA_ID + 
+				'/accounts/' + (argv.account || argv.a) + '/ledger?from=' + 
+					(argv.from || argv.f) + '&to=' + (argv.to || argv.t)),
+			function (err, stdout, stderr) {
+				printResults(JSON.parse(stdout).entries, 
+					[ 'date', 'memo', 'counterpart.number', 'debit', 'credit' ], 
+					[ 'Date', 'Memo', 'Counterpart #', 'Counterpart name', 'Debit', 
+						'Credit' ]);
+			}
 		);
 		break;
 	case 'balance-sheet', 'bs':
