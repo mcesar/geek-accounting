@@ -14,6 +14,8 @@ var POST = 'curl -k -u admin:admin -X POST ' +
 
 var COA_ID = process.env.GA_DEFAULT_COA_ID;
 
+var ISO_DATE_REGEX = /(\d{4}-\d{2}-\d{2})T\d{2}:\d{2}:\d{2}\.\d{3}Z/;
+
 var flags, flagsAndParent, sizes, i;
 
 function isError (stdout) {
@@ -64,8 +66,14 @@ function printResults (str, fields, headers, prefix) {
 		for (j = 0; j < fields.length; j += 1) {
 			headerLength = 0;
 			if (headers) { headerLength = headers[j].length; }
-			sizes[j] = Math.max(
-				sizes[j], S(value(result[i], fields[j])).length, headerLength);
+			v = value(result[i], fields[j])
+			if (typeof v === 'undefined') { 
+				v = ''; 
+			} else if (typeof v === 'number') {
+				v = v.toFixed(2);
+			}
+			if (ISO_DATE_REGEX.test(v)) { v = ISO_DATE_REGEX.exec(v)[1]; }
+			sizes[j] = Math.max(sizes[j], S(v).length, headerLength);
 		}
 	}
 	if (headers) {
@@ -88,7 +96,12 @@ function printResults (str, fields, headers, prefix) {
 			if (line.length > 0) { line += ' '; }
 			v = value(result[i], fields[j]);
 			if (typeof v === 'undefined') { v = ''; }
-			line += S(v).padRight(sizes[j]).s;
+			if (typeof v === 'number') {
+				line += S(v.toFixed(2)).padLeft(sizes[j]).s;
+			} else {
+				if (ISO_DATE_REGEX.test(v)) { v = ISO_DATE_REGEX.exec(v)[1]; }
+				line += S(v).padRight(sizes[j]).s;
+			}
 		}
 		console.log(prefix + line);
 	}
@@ -200,10 +213,74 @@ switch (argv._[0]) {
 				'/accounts/' + (argv.account || argv.a) + '/ledger?from=' + 
 					(argv.from || argv.f) + '&to=' + (argv.to || argv.t)),
 			function (err, stdout, stderr) {
-				printResults(JSON.parse(stdout).entries, 
-					[ 'date', 'memo', 'counterpart.number', 'debit', 'credit' ], 
-					[ 'Date', 'Memo', 'Counterpart #', 'Counterpart name', 'Debit', 
-						'Credit' ]);
+				var ledger = JSON.parse(stdout), balance = ledger.balance;
+				for (i = 0; i < ledger.entries.length; i += 1) {
+					if (ledger.entries[i].debit) {
+						balance += (ledger.account.debitBalance ? 1 : -1) * 
+							ledger.entries[i].debit;
+					} else if (ledger.entries[i].credit) {
+						balance += (ledger.account.creditBalance ? 1 : -1) * 
+							ledger.entries[i].credit;
+					}
+					ledger.entries[i].balance = balance;
+				}
+				console.log(ledger.account.number + ' - ' + 
+					ledger.account.name + '. Balance: ' + ledger.balance + '\n');
+				printResults(ledger.entries, 
+					[ 'date', 'memo', 'counterpart.number', 'counterpart.name', 
+						'debit', 'credit', 'balance' ], 
+					[ 'Date', 'Memo', 'Acc#', 'Account name', 
+						'Debit', 'Credit', 'Balance' ]);
+			}
+		);
+		break;
+	case 'journal', 'j':
+		if (!argv.from && !argv.f) { 
+			return console.log("--from or -f is required"); 
+		}
+		if (!argv.to && !argv.t) { 
+			return console.log("--to or -t is required"); 
+		}
+		exec(util.format(GET, '/' + COA_ID + '/journal?from=' + 
+					(argv.from || argv.f) + '&to=' + (argv.to || argv.t)),
+			function (err, stdout, stderr) {
+				var journal = JSON.parse(stdout);
+				for (i = 0; i < journal.length; i += 1) {
+					sizes = [ 0, 0, 0, 0];
+					if (i > 0) { console.log(''); }
+					console.log(ISO_DATE_REGEX.exec(journal[i].date)[1] + '\n');
+					for (j = 0; j < journal[i].debits.length; j += 1) {
+						sizes[0] = 
+							Math.max(sizes[0], journal[i].debits[j].account.number.length);
+						sizes[1] = 
+							Math.max(sizes[1], journal[i].debits[j].account.name.length);
+						sizes[2] = 
+							Math.max(sizes[2], journal[i].debits[j].value.toFixed(2).length);
+					}
+					for (j = 0; j < journal[i].credits.length; j += 1) {
+						sizes[0] = 
+							Math.max(sizes[0], journal[i].credits[j].account.number.length);
+						sizes[1] = 
+							Math.max(sizes[1], journal[i].credits[j].account.name.length);
+						sizes[2] = Math.max(sizes[2], 
+								journal[i].credits[j].value.toFixed(2).length);
+					}
+					for (j = 0; j < journal[i].debits.length; j += 1) {
+						console.log('  ' + 
+							S(journal[i].debits[j].account.number).padRight(sizes[0]) + 
+							' - ' + 
+							S(journal[i].debits[j].account.name).padRight(sizes[1]) + ' ' +
+							S(journal[i].debits[j].value.toFixed(2)).padLeft(sizes[2]));
+					}
+					for (j = 0; j < journal[i].credits.length; j += 1) {
+						console.log('a ' + 
+							S(journal[i].credits[j].account.number).padRight(sizes[0]) + 
+							' - ' + 
+							S(journal[i].credits[j].account.name).padRight(sizes[1]) + ' ' +
+							S(journal[i].credits[j].value.toFixed(2)).padLeft(sizes[3]));
+					}
+					console.log('\n' + journal[i].memo + ' (' + journal[i]._id + ')');
+				}
 			}
 		);
 		break;

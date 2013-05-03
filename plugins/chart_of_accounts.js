@@ -332,8 +332,11 @@ Service.prototype.journal = function (coaId, from, to, callback) {
 				(function eachEntry (i) {
 					if (i >= entries.length) { return callback(null, items); }
 					that.account(entries[i].account.toString(), function (err, account) {
-						entries[i].accountName = account.name;
-						entries[i].accountNumber = account.number;
+						entries[i].account = { 
+							_id: entries[i].account,
+							name: account.name,
+							number: account.number
+						};
 						eachEntry(i + 1);
 					});
 				}(0));
