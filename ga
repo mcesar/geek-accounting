@@ -277,6 +277,7 @@ switch (argv._[0]) {
 							S(journal[i].credits[j].account.number).padRight(sizes[0]) + 
 							' - ' + 
 							S(journal[i].credits[j].account.name).padRight(sizes[1]) + ' ' +
+							S('').padLeft(sizes[2] + 1) +
 							S(journal[i].credits[j].value.toFixed(2)).padLeft(sizes[3]));
 					}
 					console.log('\n' + journal[i].memo + ' (' + journal[i]._id + ')');
