@@ -47,7 +47,7 @@ Service.prototype.addUser = function (user, callback) {
 	user.password = utils.sha1Hex(user.password);
 	db.insert('users', user, function (err, item) {
 		if (err) { return callback(err); }
-		callback(null, item);
+		callback(null, item[0]);
 	});
 };
 
