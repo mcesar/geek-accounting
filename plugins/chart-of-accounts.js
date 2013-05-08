@@ -161,7 +161,7 @@ Service.prototype.addChartOfAccounts = function (coa, callback) {
 	if (validation) { return callback(new Error(validation)); }
 	db.insert('charts_of_accounts', coa, function (err, item) {
 		if (err) { return callback(err); }
-		callback(null, item);
+		callback(null, item[0]);
 	});
 };
 

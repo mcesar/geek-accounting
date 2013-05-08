@@ -1,10 +1,12 @@
 var assert = require('assert');
 
 var config = require('../config/config');
+
+config.dbName = 'geek_accounting_tests'
+
 var db = require('../lib/database').db;
 var UserService = require('../plugins/user-management').Service;
 
-config.dbName = 'geek-accounting-tests'
 
 describe('User', function	() {
 	
@@ -25,7 +27,7 @@ describe('User', function	() {
 		});
 	});
 
-	it('should save get the same user', function (done) {
+	it('should get the same user', function (done) {
 		new UserService().users(function (err, users) {
 			if (err) { throw err; }
 			assert.equal(1, users.length);
