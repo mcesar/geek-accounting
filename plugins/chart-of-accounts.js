@@ -293,7 +293,7 @@ Service.prototype.addTransaction = function (coaId, transaction, callback) {
 		});
 		db.insert('transactions_' + coaId, transaction, function (err, item) {
 			if (err) { return callback(err); }
-			callback(null, item);
+			callback(null, item[0]);
 		});
 	});
 };

@@ -15,7 +15,13 @@ describe('Coa', function	() {
 			name: 'an', 
 			number: '1', 
 			balanceSheet: true, 
-			debitBalance: true };
+			debitBalance: true },
+		transaction = {
+			debits: [ { account: '', value: 1} ],
+			credits: [ { account: '', value: 1} ],
+			date: new Date('2013-05-01'),
+			memo: 'test'
+		};
 
 	before(function (done) {
 		db.open(function (err) {
@@ -90,6 +96,45 @@ describe('Coa', function	() {
 		new CoaService().account(account._id, function (err, account) {
 			if (err) { throw err; }
 			assert.equal('ann', account.name);
+			done();
+		});
+	});
+
+	it('should save transaction without error', function (done) {
+		var accountId = account._id;
+		transaction.debits[0].account = accountId;
+		transaction.credits[0].account = accountId;
+		new CoaService().addTransaction(coa._id, transaction, 
+			function (err, newTx) {
+				if (err) { throw err; }
+				transaction._id = newTx._id.toString();
+				done();
+			}
+		);
+	});
+
+	it('should get the same transaction', function (done) {
+		new CoaService().transactions(coa._id, function (err, txs) {
+			if (err) { throw err; }
+			assert.equal(1, txs.length);
+			assert.equal('test', txs[0].memo);
+			done();
+		});
+	});
+
+	it('should delete transaction without error', function (done) {
+		new CoaService().deleteTransaction(coa._id, transaction._id, 
+			function (err) {
+				if (err) { throw err; }
+				done();
+			}
+		);
+	});
+
+	it('should get the no transactions', function (done) {
+		new CoaService().transactions(coa._id, function (err, txs) {
+			if (err) { throw err; }
+			assert.equal(0, txs.length);
 			done();
 		});
 	});
