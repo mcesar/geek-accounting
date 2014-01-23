@@ -95,7 +95,7 @@ function printResults (str, fields, headers, prefix) {
 		for (j = 0; j < fields.length; j += 1) {
 			if (line.length > 0) { line += ' '; }
 			v = value(result[i], fields[j]);
-			if (typeof v === 'undefined') { v = ''; }
+			if (typeof v === 'undefined' || v === null) { v = ''; }
 			if (typeof v === 'number') {
 				line += S(v.toFixed(2)).padLeft(sizes[j]).s;
 			} else {
@@ -136,7 +136,7 @@ switch (argv._[0]) {
 			return console.log("--name or -n is required"); 
 		}
 		exec(util.format(POST, 
-			'"name":"' + (argv.name || argv.n) + '"', '/'), checkErrorAndPrintId
+			'"name":"' + (argv.name || argv.n) + '"', ''), checkErrorAndPrintId
 		);
 		break;
 	case 'add-account', 'aa':
