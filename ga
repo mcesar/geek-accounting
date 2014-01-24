@@ -45,7 +45,7 @@ function value (obj, field) {
 function printResults (str, fields, headers, prefix) {
 	var result, sizes = [], line, headerLength, v, i, j;
 	if (!str || str.length === 0) { return; }
-	if (isError(str)) { return console.log(stdout); }
+	if (isError(str)) { return console.log(str); }
 
 	prefix = prefix || '';
 	if (typeof str === 'string') {

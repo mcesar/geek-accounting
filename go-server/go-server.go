@@ -16,23 +16,15 @@ const PathPrefix = "/charts-of-accounts"
 func init() {
 	r := mux.NewRouter()
     r.HandleFunc(PathPrefix, getAllHandler(domain.AllChartsOfAccounts)).Methods("GET")
-    r.HandleFunc(PathPrefix, postHandler(NewChartOfAccounts)).Methods("POST")
-    /*
-    r.HandleFunc(PathPrefix+"/{id}", errorHandler(GetTask)).Methods("GET")
-    r.HandleFunc(PathPrefix+"/{id}", errorHandler(UpdateTask)).Methods("PUT")
-    */
+    r.HandleFunc(PathPrefix, postHandler(domain.SaveChartOfAccounts)).Methods("POST")
+    r.HandleFunc(PathPrefix+"/{coa}/accounts", getAllHandler(domain.AllAccounts)).Methods("GET")
+    r.HandleFunc(PathPrefix+"/{coa}/accounts", postHandler(domain.SaveAccount)).Methods("POST")
     http.Handle("/", r)
 }
 
-func NewChartOfAccounts(c appengine.Context, m map[string]interface{}) (coa interface{}, err error) {
-    coa = &domain.ChartOfAccounts{Name: m["name"].(string)}
-    err = domain.SaveChartOfAccounts(c, coa.(*domain.ChartOfAccounts))
-    return
-}
-
-func getAllHandler(f func(appengine.Context) (interface{}, error)) http.HandlerFunc {
+func getAllHandler(f func(appengine.Context, map[string]string) (interface{}, error)) http.HandlerFunc {
 	return errorHandler(func(w http.ResponseWriter, r *http.Request) error {
-		items, err := f(appengine.NewContext(r))
+		items, err := f(appengine.NewContext(r), mux.Vars(r))
 		if err != nil {
 			return err
 		}
@@ -40,7 +32,7 @@ func getAllHandler(f func(appengine.Context) (interface{}, error)) http.HandlerF
 	})
 }
 
-func postHandler(f func(appengine.Context, map[string]interface{}) (interface{}, error)) http.HandlerFunc {
+func postHandler(f func(appengine.Context, map[string]interface{}, map[string]string) (interface{}, error)) http.HandlerFunc {
 	return errorHandler(func(w http.ResponseWriter, r *http.Request) error {
 		/*
 		b, _ := ioutil.ReadAll(r.Body)
@@ -52,7 +44,7 @@ func postHandler(f func(appengine.Context, map[string]interface{}) (interface{},
 	    }
 
 	    m := req.(map[string]interface{})
-	    item, err := f(appengine.NewContext(r), m)
+	    item, err := f(appengine.NewContext(r), m, mux.Vars(r))
 	    if err != nil {
 	        return badRequest{err}
 	    }
@@ -84,7 +76,7 @@ func errorHandler(f func(w http.ResponseWriter, r *http.Request) error) http.Han
             http.Error(w, "Error: item not found", http.StatusNotFound)
         default:
             log.Println(err)
-            http.Error(w, "Internal error", http.StatusInternalServerError)
+            http.Error(w, "Internal error:" + err.Error(), http.StatusInternalServerError)
         }
     }
 }
