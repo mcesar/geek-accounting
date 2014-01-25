@@ -1,10 +1,12 @@
 package server
 
 import (
+	"encoding/base64"
 	"encoding/json"
 	//"io/ioutil"
 	"log"
     "net/http"
+    "strings"
     "github.com/gorilla/mux"
     "github.com/mcesarhm/geek-accounting/go-server/domain"
 
@@ -65,7 +67,14 @@ type notFound struct{ error }
 // If the error is of another type, it is considered as an internal error and its message is logged.
 func errorHandler(f func(w http.ResponseWriter, r *http.Request) error) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
-        err := f(w, r)
+		credentials := strings.Split(r.Header["Authorization"][0], " ")[1]
+		b, err := base64.StdEncoding.DecodeString(credentials)
+		if err != nil {
+			http.Error(w, "Internal error:" + err.Error(), http.StatusInternalServerError)
+			return
+		}
+		log.Println(strings.Split(string(b), ":"))
+        err = f(w, r)
         if err == nil {
 			return
         }
