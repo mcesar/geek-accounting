@@ -1,3 +1,11 @@
+/*
+	TODO
+
+	- deixar de identificar se uma conta tem parent pela presença do ponto e passar a usar um campo parent
+	- trocar os tipos dos campos Key para datastore.Key e retirá-los do bd
+	- gravar a chave do usuário na conta e na transação
+*/
+
 package domain
 
 import (
@@ -12,7 +20,8 @@ import (
 type ChartOfAccounts struct {
 	Key string `json:"_id"`
 	Name string `json:"name"`
-	RetainedEarningsAccount *datastore.Key `json:"-"`
+	RetainedEarningsAccount *datastore.Key `json:"retainedEarningsAccount"`
+	User *datastore.Key `json:"user"`
 }
 
 func (coa *ChartOfAccounts) ValidationMessage(_ appengine.Context, _ map[string]string) string {
@@ -92,21 +101,21 @@ func (account *Account) ValidationMessage(c appengine.Context, param map[string]
 	return ""
 }
 
-func AllChartsOfAccounts(c appengine.Context, _ map[string]string) (interface{}, error) {
+func AllChartsOfAccounts(c appengine.Context, _ map[string]string, _ *datastore.Key) (interface{}, error) {
 	return getAll(c, &[]ChartOfAccounts{}, "ChartOfAccounts", "")
 }
 
-func SaveChartOfAccounts(c appengine.Context, m map[string]interface{}, param map[string]string) (interface{}, error) {
-	coa := &ChartOfAccounts{Name: m["name"].(string)}
+func SaveChartOfAccounts(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (interface{}, error) {
+	coa := &ChartOfAccounts{Name: m["name"].(string), User: userKey}
 	_, err := save(c, coa, "ChartOfAccounts", "", param)
 	return coa, err
 }
 
-func AllAccounts(c appengine.Context, param map[string]string) (interface{}, error) {
+func AllAccounts(c appengine.Context, param map[string]string, _ *datastore.Key) (interface{}, error) {
 	return getAll(c, &[]Account{}, "Account", param["coa"])
 }
 
-func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string]string) (item interface{}, err error) {
+func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string]string, _ *datastore.Key) (item interface{}, err error) {
 	account := &Account{Number: m["number"].(string), Name: m["name"].(string), Tags: []string{}}
 	for k, _ := range m {
 		if k != "name" && k != "number" {
@@ -208,7 +217,7 @@ func save(c appengine.Context, item interface{}, kind string, ancestor string, p
 			return
 		}
 	} else {
-		key = datastore.NewIncompleteKey(c, kind, ancestorKey)	
+		key = datastore.NewIncompleteKey(c, kind, ancestorKey)
 	}
 
 	key, err = datastore.Put(c, key, item)

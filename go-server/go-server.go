@@ -11,6 +11,7 @@ import (
     "github.com/mcesarhm/geek-accounting/go-server/domain"
 
     "appengine"
+    "appengine/datastore"
 )
 
 const PathPrefix = "/charts-of-accounts"
@@ -21,12 +22,18 @@ func init() {
     r.HandleFunc(PathPrefix, postHandler(domain.SaveChartOfAccounts)).Methods("POST")
     r.HandleFunc(PathPrefix+"/{coa}/accounts", getAllHandler(domain.AllAccounts)).Methods("GET")
     r.HandleFunc(PathPrefix+"/{coa}/accounts", postHandler(domain.SaveAccount)).Methods("POST")
+    r.HandleFunc("/_ah/warmup", func(w http.ResponseWriter, r *http.Request) {
+    	if err := domain.InitUserManagement(appengine.NewContext(r)); err != nil {
+    		http.Error(w, "Internal error:" + err.Error(), http.StatusInternalServerError)
+    	}
+    	return
+    })
     http.Handle("/", r)
 }
 
-func getAllHandler(f func(appengine.Context, map[string]string) (interface{}, error)) http.HandlerFunc {
-	return errorHandler(func(w http.ResponseWriter, r *http.Request) error {
-		items, err := f(appengine.NewContext(r), mux.Vars(r))
+func getAllHandler(f func(appengine.Context, map[string]string, *datastore.Key) (interface{}, error)) http.HandlerFunc {
+	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error {
+		items, err := f(appengine.NewContext(r), mux.Vars(r), userKey)
 		if err != nil {
 			return err
 		}
@@ -34,8 +41,8 @@ func getAllHandler(f func(appengine.Context, map[string]string) (interface{}, er
 	})
 }
 
-func postHandler(f func(appengine.Context, map[string]interface{}, map[string]string) (interface{}, error)) http.HandlerFunc {
-	return errorHandler(func(w http.ResponseWriter, r *http.Request) error {
+func postHandler(f func(appengine.Context, map[string]interface{}, map[string]string, *datastore.Key) (interface{}, error)) http.HandlerFunc {
+	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error {
 		/*
 		b, _ := ioutil.ReadAll(r.Body)
 		log.Println(string(b))
@@ -46,7 +53,7 @@ func postHandler(f func(appengine.Context, map[string]interface{}, map[string]st
 	    }
 
 	    m := req.(map[string]interface{})
-	    item, err := f(appengine.NewContext(r), m, mux.Vars(r))
+	    item, err := f(appengine.NewContext(r), m, mux.Vars(r), userKey)
 	    if err != nil {
 	        return badRequest{err}
 	    }
@@ -65,7 +72,7 @@ type notFound struct{ error }
 // errorHandler wraps a function returning an error by handling the error and returning a http.Handler.
 // If the error is of the one of the types defined above, it is handled as described for every type.
 // If the error is of another type, it is considered as an internal error and its message is logged.
-func errorHandler(f func(w http.ResponseWriter, r *http.Request) error) http.HandlerFunc {
+func errorHandler(f func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
 		credentials := strings.Split(r.Header["Authorization"][0], " ")[1]
 		b, err := base64.StdEncoding.DecodeString(credentials)
@@ -73,8 +80,17 @@ func errorHandler(f func(w http.ResponseWriter, r *http.Request) error) http.Han
 			http.Error(w, "Internal error:" + err.Error(), http.StatusInternalServerError)
 			return
 		}
-		log.Println(strings.Split(string(b), ":"))
-        err = f(w, r)
+		arr := strings.Split(string(b), ":")
+		err, ok, userKey := domain.Login(appengine.NewContext(r), arr[0], arr[1])
+        if err != nil {
+			http.Error(w, "Internal error:" + err.Error(), http.StatusInternalServerError)
+			return
+        }
+		if !ok {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}		
+        err = f(w, r, userKey)
         if err == nil {
 			return
         }
