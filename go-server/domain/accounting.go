@@ -15,7 +15,7 @@ type ChartOfAccounts struct {
 	Name string `json:"name"`
 	RetainedEarningsAccount *datastore.Key `json:"retainedEarningsAccount"`
 	User *datastore.Key `json:"user"`
-	AsOf time.Time `json:"asOf"`
+	AsOf time.Time `json:"timestamp"`
 }
 
 func (coa *ChartOfAccounts) ValidationMessage(_ appengine.Context, _ map[string]string) string {
@@ -32,7 +32,7 @@ type Account struct {
 	Tags []string `json:"tags"`
 	Parent *datastore.Key `json:"parent"`
 	User *datastore.Key `json:"user"`
-	AsOf time.Time `json:"asOf"`
+	AsOf time.Time `json:"timestamp"`
 }
 
 var inheritedProperties = map[string]string{
@@ -101,7 +101,88 @@ func (account *Account) ValidationMessage(c appengine.Context, param map[string]
 				return "The " + value + " must be same as the parent"
 			}
 		}
+		if account.Parent.Parent().String() != account.Key.Parent().String() {
+			return "The account's parent must belong to the same chart of accounts of the account"
+		}
 	}
+	return ""
+}
+
+type Transaction struct {
+	Key *datastore.Key `json:"_id",datastore:"-"`
+	Debits []Entry `json:"debits"`
+	Credits []Entry `json:"credits"`
+	Date time.Time `json:"date`
+	Memo string `json:"memo"`
+	Tags []string `json:"tags"`
+	User *datastore.Key `json:"user"`
+	AsOf time.Time `json:"timestamp"`
+}
+
+type Entry struct {
+	Account *datastore.Key `json:"account"`
+	Value float64 `json:"value"`
+}
+
+func (transaction *Transaction) ValidationMessage(c appengine.Context, param map[string]string) string {
+	if len(transaction.Debits) == 0 {
+		return "At least one debit must be informed"
+	}
+	if len(transaction.Credits) == 0 {
+		return "At least one credit must be informed"
+	}
+	if transaction.Date.IsZero() {
+		return "The date must be informed"
+	}
+	if len(strings.TrimSpace(transaction.Memo)) == 0 {
+		return "The memo must be informed"
+	}
+	ev := func(arr []Entry) (string, float64) {
+		sum := 0.0
+		for _, e := range arr {
+			if m := e.ValidationMessage(c, param); len(m) > 0 {
+				return m, 0.0
+			}
+			sum += e.Value
+		}
+		return "", sum
+	}
+	var debitsSum, creditsSum float64
+	var m string
+	if m, debitsSum = ev(transaction.Debits); len(m) > 0 {
+		return m
+	}
+	if m, creditsSum = ev(transaction.Credits); len(m) > 0 {
+		return m
+	}
+	if debitsSum != creditsSum {
+		return "The sum of debit values must be equals to the sum of credit values"
+	}
+	return ""
+}
+
+func (entry *Entry) ValidationMessage(c appengine.Context, param map[string]string) string {
+	if entry.Account == nil {
+		return "The account must be informed for each entry"
+	}
+	var account = new(Account)
+	if err := datastore.Get(c, entry.Account, account); err != nil {
+		return err.Error()
+	}
+	if account == nil {
+		return "Account not found"
+	}
+	if !contains(account.Tags, "analytic") {
+		return "The account must be analytic"
+	}
+	coaKey, err := datastore.DecodeKey(param["coa"])
+	if err != nil {
+		return err.Error()
+	}
+	if entry.Account.Parent().String() != coaKey.String() {
+		return "The account must belong to the same chart of accounts of the transaction"
+	}
+
 	return ""
 }
 
@@ -206,6 +287,62 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 	}
 
 	item = account
+	return
+}
+
+func AllTransactions(c appengine.Context, param map[string]string, _ *datastore.Key) (interface{}, error) {
+	return getAll(c, &[]Transaction{}, "Transaction", param["coa"])
+}
+
+func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
+
+	transaction := &Transaction{
+		Memo: m["memo"].(string),
+		AsOf: time.Now(),
+		User: userKey}
+	transaction.Date, err = time.Parse(time.RFC3339, m["date"].(string))
+	if err != nil {
+		return
+	}
+
+	coaKey, err := datastore.DecodeKey(param["coa"])
+	if err != nil {
+		return
+	}
+
+	entries := func(property string) (result []Entry, err error) {
+		for _, each := range m[property].([]interface{}) {
+
+			entry := each.(map[string]interface{})
+
+			q := datastore.NewQuery("Account").Ancestor(coaKey).Filter("Number = ", entry["account"]).KeysOnly()
+			var keys []*datastore.Key
+			keys, err = q.GetAll(c, nil)
+			if err != nil {
+				return
+			}
+			if len(keys) == 0 {
+				return nil, fmt.Errorf("Account '%v' not found", entry["account"])
+			}
+
+			result = append(result, Entry{Account: keys[0], Value: entry["value"].(float64)})
+		}
+		return
+	}
+	if transaction.Debits, err = entries("debits"); err != nil {
+		return
+	}
+	if transaction.Credits, err = entries("credits"); err != nil {
+		return
+	}
+
+	transactionKey, err := save(c, transaction, "Transaction", param["coa"], param)
+	if err != nil {
+		return
+	}
+	transaction.Key = transactionKey
+	item = transaction
+
 	return
 }
 

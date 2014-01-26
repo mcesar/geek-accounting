@@ -193,7 +193,7 @@ switch (argv._[0]) {
 					entriesString((argv.debits || argv.d).split(',')) + '], ' + 
 			'"credits": [' + 
 					entriesString((argv.credits || argv.c).split(',')) + '], ' + 
-			'"date": "' + (argv.a || argv.d) + '", ' + 
+			'"date": "' + (argv.a || argv.d) + 'T00:00:00Z", ' + 
 			'"memo": "' + (argv.m || argv.m) + '"', 
 			'/' + COA_ID + '/transactions'), 
 			checkErrorAndPrintId
