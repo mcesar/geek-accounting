@@ -317,8 +317,7 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 
 			q := datastore.NewQuery("Account").Ancestor(coaKey).Filter("Number = ", entry["account"]).KeysOnly()
 			var keys []*datastore.Key
-			keys, err = q.GetAll(c, nil)
-			if err != nil {
+			if keys, err = q.GetAll(c, nil); err != nil {
 				return
 			}
 			if len(keys) == 0 {
