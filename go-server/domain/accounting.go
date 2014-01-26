@@ -157,46 +157,52 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 		delete(m, "parent")
 	}
 
+	var retainedEarningsAccount bool
 	for k, _ := range m {
 		if k != "name" && k != "number" {
-			account.Tags = append(account.Tags, k)
+			if k == "retainedEarnings" {
+				retainedEarningsAccount = true
+			} else {
+				account.Tags = append(account.Tags, k)
+			}
 		}
 	}
 	if !contains(account.Tags, "analytic") {
 		account.Tags = append(account.Tags, "analytic")
 	}
 
-	retainedEarningsAccount := contains(account.Tags, "retainedEarnings")
-	i := indexOf(account.Tags, "retainedEarnings")
-	if i != -1 {
-		account.Tags = append(account.Tags[:i], account.Tags[i+1:]...)
-	}
+	err = datastore.RunInTransaction(c, func(c appengine.Context) (err error) {
 
-	accountKey, err := save(c, account, "Account", param["coa"], param)
+		accountKey, err := save(c, account, "Account", param["coa"], param)
+		if err != nil {
+			return
+		}
+
+		if retainedEarningsAccount {
+			coa := new(ChartOfAccounts)
+			if err = datastore.Get(c, coaKey, coa); err != nil {
+				return
+			}
+			coa.RetainedEarningsAccount = accountKey
+			if _, err = datastore.Put(c, coaKey, coa); err != nil {
+				return
+			}
+		}
+
+		if account.Parent != nil {
+			i := indexOf(parent[0].Tags, "analytic")
+			if i != -1 {
+				parent[0].Tags = append(parent[0].Tags[:i], parent[0].Tags[i+1:]...)
+			}
+			parent[0].Tags = append(parent[0].Tags, "synthetic")
+			if _, err = datastore.Put(c, account.Parent, &parent[0]); err != nil {
+				return
+			}
+		}
+		return
+	}, nil)
 	if err != nil {
 		return
-	}
-
-	if retainedEarningsAccount {
-		coa := new(ChartOfAccounts)
-		if err = datastore.Get(c, coaKey, coa); err != nil {
-			return
-		}
-		coa.RetainedEarningsAccount = accountKey
-		if _, err = datastore.Put(c, coaKey, coa); err != nil {
-			return
-		}
-	}
-
-	if account.Parent != nil {
-		i := indexOf(parent[0].Tags, "analytic")
-		if i != -1 {
-			parent[0].Tags = append(parent[0].Tags[:i], parent[0].Tags[i+1:]...)
-		}
-		parent[0].Tags = append(parent[0].Tags, "synthetic")
-		if _, err = datastore.Put(c, account.Parent, &parent[0]); err != nil {
-			return
-		}
 	}
 
 	item = account
