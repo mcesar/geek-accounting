@@ -1,11 +1,3 @@
-/*
-	TODO
-
-	- deixar de identificar se uma conta tem parent pela presença do ponto e passar a usar um campo parent
-	- trocar os tipos dos campos Key para datastore.Key e retirá-los do bd
-	- gravar a chave do usuário na conta e na transação
-*/
-
 package domain
 
 import (
@@ -13,15 +5,17 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"time"
 	"appengine"
 	"appengine/datastore"
 )
 
 type ChartOfAccounts struct {
-	Key string `json:"_id"`
+	Key *datastore.Key `json:"_id",datastore:"-"`
 	Name string `json:"name"`
 	RetainedEarningsAccount *datastore.Key `json:"retainedEarningsAccount"`
 	User *datastore.Key `json:"user"`
+	AsOf time.Time `json:"asOf"`
 }
 
 func (coa *ChartOfAccounts) ValidationMessage(_ appengine.Context, _ map[string]string) string {
@@ -32,10 +26,13 @@ func (coa *ChartOfAccounts) ValidationMessage(_ appengine.Context, _ map[string]
 }
 
 type Account struct {
-	Key string `json:"_id"`
+	Key *datastore.Key `json:"_id",datastore:"-"`
 	Number string `json:"number"`
 	Name string `json:"name"`
 	Tags []string `json:"tags"`
+	Parent *datastore.Key `json:"parent"`
+	User *datastore.Key `json:"user"`
+	AsOf time.Time `json:"asOf"`
 }
 
 var inheritedProperties = map[string]string{
@@ -77,23 +74,30 @@ func (account *Account) ValidationMessage(c appengine.Context, param map[string]
 	if count > 1 {
 		return "Only one income statement attribute is allowed"
 	}
-	if strings.Contains(account.Number, ".") {
-		parentNumber := account.Number[:strings.LastIndex(account.Number, ".")]
+	if account.Key == nil {
 		coaKey, err := datastore.DecodeKey(param["coa"])
 		if err != nil {
 			return err.Error()
 		}
-		q := datastore.NewQuery("Account").Ancestor(coaKey).Filter("Number = ", parentNumber)
-		var parent []Account
-		_, err = q.GetAll(c, &parent)
+		q := datastore.NewQuery("Account").Ancestor(coaKey).Filter("Number = ", account.Number).KeysOnly()
+		keys, err := q.GetAll(c, nil)
 		if err != nil {
 			return err.Error()
 		}
-		if len(parent) == 0 {
-			return "Parent not found"
+		if len(keys) != 0 {
+			return "An account with this number already exists"
+		}		
+	}
+	if account.Parent != nil {
+		var parent Account
+		if err := datastore.Get(c, account.Parent, &parent); err != nil {
+			return err.Error()
+		}
+		if !strings.HasPrefix(account.Number, parent.Number) {
+			return "The number must start with parent's number"
 		}
 		for key, value := range inheritedProperties {
-			if contains(parent[0].Tags, key) && !contains(account.Tags, key) {
+			if contains(parent.Tags, key) && !contains(account.Tags, key) {
 				return "The " + value + " must be same as the parent"
 			}
 		}
@@ -106,7 +110,10 @@ func AllChartsOfAccounts(c appengine.Context, _ map[string]string, _ *datastore.
 }
 
 func SaveChartOfAccounts(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (interface{}, error) {
-	coa := &ChartOfAccounts{Name: m["name"].(string), User: userKey}
+	coa := &ChartOfAccounts{
+		Name: m["name"].(string), 
+		User: userKey,
+		AsOf: time.Now()}
 	_, err := save(c, coa, "ChartOfAccounts", "", param)
 	return coa, err
 }
@@ -115,8 +122,41 @@ func AllAccounts(c appengine.Context, param map[string]string, _ *datastore.Key)
 	return getAll(c, &[]Account{}, "Account", param["coa"])
 }
 
-func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string]string, _ *datastore.Key) (item interface{}, err error) {
-	account := &Account{Number: m["number"].(string), Name: m["name"].(string), Tags: []string{}}
+func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
+
+	account := &Account{
+		Number: m["number"].(string), 
+		Name: m["name"].(string), 
+		Tags: []string{},
+		User: userKey,
+		AsOf: time.Now()}
+
+	if accountKeyAsString, ok := param["account"]; ok {
+		account.Key, err = datastore.DecodeKey(accountKeyAsString)
+		if err != nil {
+			return
+		}
+	}
+
+	coaKey, err := datastore.DecodeKey(param["coa"])
+	if err != nil {
+		return
+	}
+
+	var parent []Account
+	if parentNumber, ok := m["parent"]; ok {
+		q := datastore.NewQuery("Account").Ancestor(coaKey).Filter("Number = ", parentNumber)
+		keys, err := q.GetAll(c, &parent)
+		if err != nil {
+			return nil, err
+		}
+		if len(keys) == 0 {
+			return nil, fmt.Errorf("Parent not found")
+		}
+		account.Parent = keys[0]
+		delete(m, "parent")
+	}
+
 	for k, _ := range m {
 		if k != "name" && k != "number" {
 			account.Tags = append(account.Tags, k)
@@ -132,14 +172,7 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 		account.Tags = append(account.Tags[:i], account.Tags[i+1:]...)
 	}
 
-	var accountKey *datastore.Key
-	accountKey, err = save(c, account, "Account", param["coa"], param)
-	if err != nil {
-		return
-	}
-
-	var coaKey *datastore.Key
-	coaKey, err = datastore.DecodeKey(param["coa"])
+	accountKey, err := save(c, account, "Account", param["coa"], param)
 	if err != nil {
 		return
 	}
@@ -155,21 +188,13 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 		}
 	}
 
-	if strings.Contains(account.Number, ".") {
-		parentNumber := account.Number[:strings.LastIndex(account.Number, ".")]
-		q := datastore.NewQuery("Account").Ancestor(coaKey).Filter("Number = ", parentNumber)
-		var parent []Account
-		var keys []*datastore.Key
-		keys, err = q.GetAll(c, &parent)
-		if err != nil {
-			return
-		}
+	if account.Parent != nil {
 		i := indexOf(parent[0].Tags, "analytic")
 		if i != -1 {
 			parent[0].Tags = append(parent[0].Tags[:i], parent[0].Tags[i+1:]...)
 		}
 		parent[0].Tags = append(parent[0].Tags, "synthetic")
-		if _, err = datastore.Put(c, keys[0], &parent[0]); err != nil {
+		if _, err = datastore.Put(c, account.Parent, &parent[0]); err != nil {
 			return
 		}
 	}
@@ -190,7 +215,7 @@ func getAll(c appengine.Context, items interface{}, kind string, ancestor string
 	keys, err := q.GetAll(c, items)
 	v := reflect.ValueOf(items).Elem()
 	for i := 0; i < v.Len(); i++ {
-		v.Index(i).FieldByName("Key").SetString(keys[i].Encode())
+		v.Index(i).FieldByName("Key").Set(reflect.ValueOf(keys[i]))
 	}
 	return items, err
 }
@@ -211,11 +236,8 @@ func save(c appengine.Context, item interface{}, kind string, ancestor string, p
 
 	v := reflect.ValueOf(item).Elem()
 
-	if len(v.FieldByName("Key").String()) > 0 {
-		key, err = datastore.DecodeKey(v.FieldByName("Key").String())
-		if err != nil {
-			return
-		}
+	if !v.FieldByName("Key").IsNil() {
+		key = v.FieldByName("Key").Interface().(*datastore.Key)
 	} else {
 		key = datastore.NewIncompleteKey(c, kind, ancestorKey)
 	}
@@ -226,7 +248,7 @@ func save(c appengine.Context, item interface{}, kind string, ancestor string, p
 	}
 
 	if key != nil {
-		v.FieldByName("Key").SetString(key.Encode())
+		v.FieldByName("Key").Set(reflect.ValueOf(key))
 	}
 
 	return
