@@ -53,6 +53,9 @@ function printResults (str, fields, headers, prefix) {
 	} else {
 		result = str;
 	}
+	if (result === null) {
+		result = []
+	}
 	if (headers) {
 		for (i = 0; i < headers.length; i += 1) {
 			sizes.push(headers[i].length);

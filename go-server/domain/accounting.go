@@ -74,11 +74,11 @@ func (account *Account) ValidationMessage(c appengine.Context, param map[string]
 	if count > 1 {
 		return "Only one income statement attribute is allowed"
 	}
+	coaKey, err := datastore.DecodeKey(param["coa"])
+	if err != nil {
+		return err.Error()
+	}
 	if account.Key == nil {
-		coaKey, err := datastore.DecodeKey(param["coa"])
-		if err != nil {
-			return err.Error()
-		}
 		q := datastore.NewQuery("Account").Ancestor(coaKey).Filter("Number = ", account.Number).KeysOnly()
 		keys, err := q.GetAll(c, nil)
 		if err != nil {
@@ -101,11 +101,27 @@ func (account *Account) ValidationMessage(c appengine.Context, param map[string]
 				return "The " + value + " must be same as the parent"
 			}
 		}
-		if account.Parent.Parent().String() != account.Key.Parent().String() {
+		if account.Parent.Parent().String() != coaKey.String() {
 			return "The account's parent must belong to the same chart of accounts of the account"
 		}
 	}
 	return ""
+}
+
+func (account *Account) Debit(value float64) float64 {
+	if contains(account.Tags, "debitBalance") {
+		return value
+	} else {
+		return -value
+	}
+}
+
+func (account *Account) Credit(value float64) float64 {
+	if contains(account.Tags, "creditBalance") {
+		return value
+	} else {
+		return -value
+	}
 }
 
 type Transaction struct {
@@ -187,7 +203,7 @@ func (entry *Entry) ValidationMessage(c appengine.Context, param map[string]stri
 }
 
 func AllChartsOfAccounts(c appengine.Context, _ map[string]string, _ *datastore.Key) (interface{}, error) {
-	return getAll(c, &[]ChartOfAccounts{}, "ChartOfAccounts", "")
+	return getAll(c, &[]ChartOfAccounts{}, "ChartOfAccounts", "", []string{"Name"})
 }
 
 func SaveChartOfAccounts(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (interface{}, error) {
@@ -200,7 +216,7 @@ func SaveChartOfAccounts(c appengine.Context, m map[string]interface{}, param ma
 }
 
 func AllAccounts(c appengine.Context, param map[string]string, _ *datastore.Key) (interface{}, error) {
-	return getAll(c, &[]Account{}, "Account", param["coa"])
+	return getAll(c, &[]Account{}, "Account", param["coa"], []string{"Number"})
 }
 
 func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
@@ -291,7 +307,7 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 }
 
 func AllTransactions(c appengine.Context, param map[string]string, _ *datastore.Key) (interface{}, error) {
-	return getAll(c, &[]Transaction{}, "Transaction", param["coa"])
+	return getAll(c, &[]Transaction{}, "Transaction", param["coa"], []string{"Date", "AsOf"})
 }
 
 func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
@@ -345,7 +361,65 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 	return
 }
 
-func getAll(c appengine.Context, items interface{}, kind string, ancestor string) (interface{}, error) {
+func Balance(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
+	coaKey, err := datastore.DecodeKey(m["coa"])
+	if err != nil { return }
+	from := time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC)
+	to, err := time.Parse(time.RFC3339, m["at"] + "T00:00:00Z")
+	if err != nil { return }
+	return balances(c, coaKey, from, to, map[string]interface{}{})
+}
+
+func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, accountFilters map[string]interface{}) (result []map[string]interface{}, err error) {
+	
+	q := datastore.NewQuery("Account").Ancestor(coaKey).Order("Number")
+	for k, v := range accountFilters {
+		q = q.Filter(k, v)
+	}
+	var accounts []*Account
+	accountKeys, err := q.GetAll(c, &accounts)
+	if err != nil { return }
+
+	q = datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
+	var transactions []*Transaction
+	_, err = q.GetAll(c, &transactions)
+	if err != nil { return }
+
+	resultMap := map[string]map[string]interface{}{}
+	for i, a := range accounts {
+		item := map[string]interface{}{"account": a, "value": 0.0}
+		result = append(result, item)
+		resultMap[accountKeys[i].String()] = item
+	}
+
+	var incrementValue func(accountKey *datastore.Key, value float64, debit bool)
+	incrementValue = func(accountKey *datastore.Key, value float64, debit bool) {
+		if accountKey == nil { return }
+		item := resultMap[accountKey.String()]
+		account := item["account"].(*Account)
+		var increment float64
+		if debit {
+			increment = account.Debit(value)
+		} else {
+			increment = account.Credit(value)
+		}
+		item["value"] = item["value"].(float64) + increment
+		incrementValue(account.Parent, value, debit)
+	}
+
+	for _, t := range transactions {
+		for _, e := range t.Debits {
+			incrementValue(e.Account, e.Value, true)
+		}
+		for _, e := range t.Credits {
+			incrementValue(e.Account, e.Value, false)
+		}
+	}
+
+	return
+}
+
+func getAll(c appengine.Context, items interface{}, kind string, ancestor string, orderKeys []string) (interface{}, error) {
 	q := datastore.NewQuery(kind)
 	if len(ancestor) > 0 {
 		ancestorKey, err := datastore.DecodeKey(ancestor)
@@ -353,6 +427,9 @@ func getAll(c appengine.Context, items interface{}, kind string, ancestor string
 			return nil, err
 		}
 		q = q.Ancestor(ancestorKey)
+	}
+	for _, o := range orderKeys {
+		q = q.Order(o)
 	}
 	keys, err := q.GetAll(c, items)
 	v := reflect.ValueOf(items).Elem()

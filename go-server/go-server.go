@@ -24,6 +24,7 @@ func init() {
     r.HandleFunc(PathPrefix+"/{coa}/accounts", postHandler(domain.SaveAccount)).Methods("POST")
     r.HandleFunc(PathPrefix+"/{coa}/transactions", getAllHandler(domain.AllTransactions)).Methods("GET")
     r.HandleFunc(PathPrefix+"/{coa}/transactions", postHandler(domain.SaveTransaction)).Methods("POST")
+    r.HandleFunc(PathPrefix+"/{coa}/balance-sheet", getAllHandler(domain.Balance)).Methods("GET")
     r.HandleFunc("/_ah/warmup", func(w http.ResponseWriter, r *http.Request) {
     	if err := domain.InitUserManagement(appengine.NewContext(r)); err != nil {
     		http.Error(w, "Internal error:" + err.Error(), http.StatusInternalServerError)
@@ -35,7 +36,11 @@ func init() {
 
 func getAllHandler(f func(appengine.Context, map[string]string, *datastore.Key) (interface{}, error)) http.HandlerFunc {
 	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error {
-		items, err := f(appengine.NewContext(r), mux.Vars(r), userKey)
+		params := mux.Vars(r)
+		for k, v := range r.URL.Query() {
+			params[k] = v[0]
+		}
+		items, err := f(appengine.NewContext(r), params, userKey)
 		if err != nil {
 			return err
 		}
