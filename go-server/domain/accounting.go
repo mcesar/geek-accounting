@@ -370,6 +370,61 @@ func Balance(c appengine.Context, m map[string]string, _ *datastore.Key) (result
 	return balances(c, coaKey, from, to, map[string]interface{}{})
 }
 
+func Journal(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
+
+	coaKey, err := datastore.DecodeKey(m["coa"])
+	if err != nil { return }
+	from, err := time.Parse(time.RFC3339, m["from"] + "T00:00:00Z")
+	to, err := time.Parse(time.RFC3339, m["to"] + "T00:00:00Z")
+	if err != nil { return }
+
+	q := datastore.NewQuery("Account").Ancestor(coaKey).Order("Number")
+	var accounts []*Account
+	accountKeys, err := q.GetAll(c, &accounts)
+	if err != nil { return }
+
+	q = datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
+	var transactions []*Transaction
+	transactionKeys, err := q.GetAll(c, &transactions)
+	if err != nil { return }
+
+	accountsMap := map[string]*Account{}
+	for i, a := range accounts {
+		accountsMap[accountKeys[i].String()] = a
+	}
+
+	resultMap := []map[string]interface{}{}
+
+	addEntries := func(entries []Entry) (result []map[string]interface{}) {
+		for _, e := range entries {
+			account := accountsMap[e.Account.String()]
+			result = append(result, map[string]interface{}{
+				"account": map[string]interface{}{
+					"number": account.Number,
+					"name": account.Name,
+				},
+				"value": e.Value,
+			})
+		}
+		return
+	}
+
+	for i, t := range transactions {
+		m := map[string]interface{}{
+			"_id": transactionKeys[i],
+			"date": t.Date,
+			"memo": t.Memo,
+			"debits": addEntries(t.Debits),
+			"credits": addEntries(t.Credits),
+		}
+		resultMap = append(resultMap, m)
+	}
+
+	result = resultMap
+
+	return
+}
+
 func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, accountFilters map[string]interface{}) (result []map[string]interface{}, err error) {
 	
 	q := datastore.NewQuery("Account").Ancestor(coaKey).Order("Number")
