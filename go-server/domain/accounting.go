@@ -392,28 +392,21 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 		resultMap[accountKeys[i].String()] = item
 	}
 
-	var incrementValue func(accountKey *datastore.Key, value float64, debit bool)
-	incrementValue = func(accountKey *datastore.Key, value float64, debit bool) {
-		if accountKey == nil { return }
-		item := resultMap[accountKey.String()]
-		account := item["account"].(*Account)
-		var increment float64
-		if debit {
-			increment = account.Debit(value)
-		} else {
-			increment = account.Credit(value)
+	incrementValue := func(entries []Entry, f func(*Account, float64) float64) {
+		for _, e := range entries {
+			accountKey, value := e.Account, e.Value
+			for accountKey != nil {
+				item := resultMap[accountKey.String()]
+				account := item["account"].(*Account)
+				item["value"] = item["value"].(float64) + f(account, value)
+				accountKey = account.Parent
+			}
 		}
-		item["value"] = item["value"].(float64) + increment
-		incrementValue(account.Parent, value, debit)
 	}
 
 	for _, t := range transactions {
-		for _, e := range t.Debits {
-			incrementValue(e.Account, e.Value, true)
-		}
-		for _, e := range t.Credits {
-			incrementValue(e.Account, e.Value, false)
-		}
+		incrementValue(t.Debits, (*Account).Debit)
+		incrementValue(t.Credits, (*Account).Credit)
 	}
 
 	return
