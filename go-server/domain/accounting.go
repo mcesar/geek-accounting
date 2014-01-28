@@ -425,6 +425,87 @@ func Journal(c appengine.Context, m map[string]string, _ *datastore.Key) (result
 	return
 }
 
+func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
+
+	coaKey, err := datastore.DecodeKey(m["coa"])
+	if err != nil { return }
+	from, err := time.Parse(time.RFC3339, m["from"] + "T00:00:00Z")
+	to, err := time.Parse(time.RFC3339, m["to"] + "T00:00:00Z")
+	if err != nil { return }
+	var (
+		accountKey *datastore.Key
+		account *Account
+	)
+	q := datastore.NewQuery("Account").Ancestor(coaKey)
+	var accounts []*Account
+	accountKeys, err := q.GetAll(c, &accounts)
+	if err != nil { return }
+
+	accountsMap := map[string]*Account{}
+	for i, a := range accounts {
+		if a.Number == m["account"] {
+			accountKey = accountKeys[i]
+			account = a
+		}
+		accountsMap[accountKeys[i].String()] = a
+	}	
+
+	q = datastore.NewQuery("Transaction").Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
+	var transactions []*Transaction
+	_, err = q.GetAll(c, &transactions)
+	if err != nil { return }
+
+	resultEntries := []interface{}{}
+	runningBalance, balance := 0.0, 0.0
+
+	addEntries := func(t *Transaction, entries []Entry, counterpartEntries []Entry, f func(*Account, float64) float64, kind string) {
+		for _, e := range entries {
+			if e.Account.String() != accountKey.String() { continue }
+			runningBalance += f(accountsMap[e.Account.String()], e.Value)
+			if t.Date.Before(from) {
+				balance = runningBalance
+			} else {
+				entry := map[string]interface{}{
+					"date": t.Date,
+					"memo": t.Memo,
+					"balance": runningBalance,
+				}
+				entry[kind] = e.Value
+				counterpart := map[string]interface{}{}
+				entry["counterpart"] = counterpart
+				if len(counterpartEntries) == 1 {
+					counterpartAccount := accountsMap[counterpartEntries[0].Account.String()]
+					counterpart["number"] = counterpartAccount.Number
+					counterpart["name"] = counterpartAccount.Name
+				} else {
+					counterpart["name"] = "many"
+				}
+				resultEntries = append(resultEntries, entry)
+			}
+		}
+		return
+	}
+
+	for _, t := range transactions {
+		addEntries(t, t.Debits, t.Credits, (*Account).Debit, "debit")
+		addEntries(t, t.Credits, t.Debits, (*Account).Credit, "credit")
+	}
+
+	result = map[string]interface{}{
+		"account": map[string]interface{}{
+			"_id": accountKey,
+			"number": account.Number,
+			"name": account.Name,
+			"debitBalance": contains(account.Tags, "debitBalance"),
+			"creditBalance": contains(account.Tags, "creditBalance"),
+		},
+		"entries": resultEntries,
+		"balance": balance,
+	} 
+	
+	return
+}
+
 func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, accountFilters map[string]interface{}) (result []map[string]interface{}, err error) {
 	
 	q := datastore.NewQuery("Account").Ancestor(coaKey).Order("Number")

@@ -26,6 +26,7 @@ func init() {
     r.HandleFunc(PathPrefix+"/{coa}/transactions", postHandler(domain.SaveTransaction)).Methods("POST")
     r.HandleFunc(PathPrefix+"/{coa}/balance-sheet", getAllHandler(domain.Balance)).Methods("GET")
     r.HandleFunc(PathPrefix+"/{coa}/journal", getAllHandler(domain.Journal)).Methods("GET")
+    r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}/ledger", getAllHandler(domain.Ledger)).Methods("GET")
     r.HandleFunc("/_ah/warmup", func(w http.ResponseWriter, r *http.Request) {
     	if err := domain.InitUserManagement(appengine.NewContext(r)); err != nil {
     		http.Error(w, "Internal error:" + err.Error(), http.StatusInternalServerError)
