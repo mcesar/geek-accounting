@@ -1,12 +1,5 @@
 package accounting
 
-/*
-	TODO
-
-	- ver porque está sendo permitido incluir uma conta com natureza do saldo diferente da do pai
-	- não incluir a tag synthetic mais de uma vez
-*/
-
 import (
 	//"log"
 	"fmt"
@@ -298,7 +291,9 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 			if i != -1 {
 				parent[0].Tags = append(parent[0].Tags[:i], parent[0].Tags[i+1:]...)
 			}
-			parent[0].Tags = append(parent[0].Tags, "synthetic")
+			if !contains(parent[0].Tags, "synthetic") {
+				parent[0].Tags = append(parent[0].Tags, "synthetic")
+			}
 			if _, err = datastore.Put(c, account.Parent, &parent[0]); err != nil {
 				return
 			}
