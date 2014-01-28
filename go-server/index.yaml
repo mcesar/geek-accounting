@@ -15,11 +15,11 @@ indexes:
   properties:
   - name: Number
 
-- kind: Greeting
+- kind: Account
   ancestor: yes
   properties:
-  - name: Date
-    direction: desc
+  - name: Tags
+  - name: Number
 
 - kind: Transaction
   properties:

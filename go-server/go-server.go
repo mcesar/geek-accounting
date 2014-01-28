@@ -8,7 +8,8 @@ import (
     "net/http"
     "strings"
     "github.com/gorilla/mux"
-    "github.com/mcesarhm/geek-accounting/go-server/domain"
+    "github.com/mcesarhm/geek-accounting/go-server/accounting"
+    "github.com/mcesarhm/geek-accounting/go-server/core"
 
     "appengine"
     "appengine/datastore"
@@ -18,17 +19,18 @@ const PathPrefix = "/charts-of-accounts"
 
 func init() {
 	r := mux.NewRouter()
-    r.HandleFunc(PathPrefix, getAllHandler(domain.AllChartsOfAccounts)).Methods("GET")
-    r.HandleFunc(PathPrefix, postHandler(domain.SaveChartOfAccounts)).Methods("POST")
-    r.HandleFunc(PathPrefix+"/{coa}/accounts", getAllHandler(domain.AllAccounts)).Methods("GET")
-    r.HandleFunc(PathPrefix+"/{coa}/accounts", postHandler(domain.SaveAccount)).Methods("POST")
-    r.HandleFunc(PathPrefix+"/{coa}/transactions", getAllHandler(domain.AllTransactions)).Methods("GET")
-    r.HandleFunc(PathPrefix+"/{coa}/transactions", postHandler(domain.SaveTransaction)).Methods("POST")
-    r.HandleFunc(PathPrefix+"/{coa}/balance-sheet", getAllHandler(domain.Balance)).Methods("GET")
-    r.HandleFunc(PathPrefix+"/{coa}/journal", getAllHandler(domain.Journal)).Methods("GET")
-    r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}/ledger", getAllHandler(domain.Ledger)).Methods("GET")
+    r.HandleFunc(PathPrefix, getAllHandler(accounting.AllChartsOfAccounts)).Methods("GET")
+    r.HandleFunc(PathPrefix, postHandler(accounting.SaveChartOfAccounts)).Methods("POST")
+    r.HandleFunc(PathPrefix+"/{coa}/accounts", getAllHandler(accounting.AllAccounts)).Methods("GET")
+    r.HandleFunc(PathPrefix+"/{coa}/accounts", postHandler(accounting.SaveAccount)).Methods("POST")
+    r.HandleFunc(PathPrefix+"/{coa}/transactions", getAllHandler(accounting.AllTransactions)).Methods("GET")
+    r.HandleFunc(PathPrefix+"/{coa}/transactions", postHandler(accounting.SaveTransaction)).Methods("POST")
+    r.HandleFunc(PathPrefix+"/{coa}/balance-sheet", getAllHandler(accounting.Balance)).Methods("GET")
+    r.HandleFunc(PathPrefix+"/{coa}/journal", getAllHandler(accounting.Journal)).Methods("GET")
+    r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}/ledger", getAllHandler(accounting.Ledger)).Methods("GET")
+    r.HandleFunc(PathPrefix+"/{coa}/income-statement", getAllHandler(accounting.IncomeStatement)).Methods("GET")
     r.HandleFunc("/_ah/warmup", func(w http.ResponseWriter, r *http.Request) {
-    	if err := domain.InitUserManagement(appengine.NewContext(r)); err != nil {
+    	if err := core.InitUserManagement(appengine.NewContext(r)); err != nil {
     		http.Error(w, "Internal error:" + err.Error(), http.StatusInternalServerError)
     	}
     	return
@@ -90,7 +92,7 @@ func errorHandler(f func(w http.ResponseWriter, r *http.Request, userKey *datast
 			return
 		}
 		arr := strings.Split(string(b), ":")
-		err, ok, userKey := domain.Login(appengine.NewContext(r), arr[0], arr[1])
+		err, ok, userKey := core.Login(appengine.NewContext(r), arr[0], arr[1])
         if err != nil {
 			http.Error(w, "Internal error:" + err.Error(), http.StatusInternalServerError)
 			return

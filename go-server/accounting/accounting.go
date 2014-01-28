@@ -1,4 +1,11 @@
-package domain
+package accounting
+
+/*
+	TODO
+
+	- ver porque está sendo permitido incluir uma conta com natureza do saldo diferente da do pai
+	- não incluir a tag synthetic mais de uma vez
+*/
 
 import (
 	//"log"
@@ -317,14 +324,10 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 		AsOf: time.Now(),
 		User: userKey}
 	transaction.Date, err = time.Parse(time.RFC3339, m["date"].(string))
-	if err != nil {
-		return
-	}
+	if err != nil { return }
 
 	coaKey, err := datastore.DecodeKey(param["coa"])
-	if err != nil {
-		return
-	}
+	if err != nil { return }
 
 	entries := func(property string) (result []Entry, err error) {
 		for _, each := range m[property].([]interface{}) {
@@ -367,7 +370,7 @@ func Balance(c appengine.Context, m map[string]string, _ *datastore.Key) (result
 	from := time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC)
 	to, err := time.Parse(time.RFC3339, m["at"] + "T00:00:00Z")
 	if err != nil { return }
-	return balances(c, coaKey, from, to, map[string]interface{}{})
+	return balances(c, coaKey, from, to, map[string]interface{}{"Tags =": "balanceSheet"})
 }
 
 func Journal(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
@@ -450,7 +453,7 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 		accountsMap[accountKeys[i].String()] = a
 	}	
 
-	q = datastore.NewQuery("Transaction").Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
+	q = datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
 	var transactions []*Transaction
 	_, err = q.GetAll(c, &transactions)
 	if err != nil { return }
@@ -506,6 +509,136 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 	return
 }
 
+func IncomeStatement(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
+	coaKey, err := datastore.DecodeKey(m["coa"])
+	if err != nil { return }
+	from, err := time.Parse(time.RFC3339, m["from"] + "T00:00:00Z")
+	if err != nil { return }
+	to, err := time.Parse(time.RFC3339, m["to"] + "T00:00:00Z")
+	if err != nil { return }
+
+	balances, err := balances(c, coaKey, from, to, map[string]interface{}{"Tags =": "incomeStatement"})
+	if err != nil { return }
+
+	type entryType struct {
+		Balance float64 `json:"balance"`
+		Details[]interface{} `json:"details"`
+	}
+	type resultType struct {
+		GrossRevenue *entryType `json:"grossRevenue"`
+		Deduction *entryType `json:"deduction"`
+		SalesTax *entryType `json:"salesTax"`
+		NetRevenue *entryType `json:"netRevenue"`
+		Cost *entryType `json:"cost"`
+		GrossProfit *entryType `json:"grossProfit"`
+		OperatingExpense *entryType `json:"operatingExpense"`
+		NetOperatingIncome *entryType `json:"netOperatingIncome"`
+		NonOperatingRevenue *entryType `json:"nonOperatingRevenue"`
+		NonOperatingExpense *entryType `json:"nonOperatingExpense"`
+		NonOperatingTax *entryType `json:"nonOperatingTax"`
+		IncomeBeforeIncomeTax *entryType `json:"incomeBeforeIncomeTax"`
+		IncomeTax *entryType `json:"incomeTax"`
+		Dividends *entryType `json:"dividends"`
+		NetIncome *entryType `json:"netIncome"`
+	}
+
+	var (
+		resultTyped resultType
+		revenueRoots, expenseRoots []*Account
+	)
+
+	addBalance := func(entry *entryType, balance map[string]interface{}) *entryType {
+		if contains(balance["account"].(*Account).Tags, "analytic") && balance["value"].(float64) > 0 {
+			if entry == nil {
+				entry = &entryType{}
+			}
+			entry.Balance += balance["value"].(float64)
+			entry.Details = append(entry.Details, balance)
+		}
+		return entry
+	}
+
+	isDescendent := func(account *Account, parents []*Account) bool {
+		for _, p := range parents {
+			if strings.HasPrefix(account.Number, p.Number) {
+				return true
+			}
+		}
+		return false
+	}
+
+	for _, m := range balances {
+		account := m["account"].(*Account)
+		if account.Parent == nil {
+			if contains(account.Tags, "creditBalance") {
+				revenueRoots = append(revenueRoots, account)
+			} else {
+				expenseRoots = append(expenseRoots, account)
+			}
+		}
+	}
+
+	for _, m := range balances {
+		account := m["account"].(*Account)
+		if contains(account.Tags, "operating") && isDescendent(account, revenueRoots) {
+			resultTyped.GrossRevenue = addBalance(resultTyped.GrossRevenue, m)
+		} else if contains(account.Tags, "deduction") {
+			resultTyped.Deduction = addBalance(resultTyped.Deduction, m)
+		} else if contains(account.Tags, "salesTax") {
+			resultTyped.SalesTax = addBalance(resultTyped.SalesTax, m)
+		} else if contains(account.Tags, "cost") {
+			resultTyped.Cost = addBalance(resultTyped.Cost, m)
+		} else if contains(account.Tags, "operating") && isDescendent(account, expenseRoots) {
+			resultTyped.OperatingExpense = addBalance(resultTyped.OperatingExpense, m)
+		} else if contains(account.Tags, "nonOperatingTax") {
+			resultTyped.NonOperatingTax = addBalance(resultTyped.NonOperatingTax, m)
+		} else if contains(account.Tags, "incomeTax") {
+			resultTyped.IncomeTax = addBalance(resultTyped.IncomeTax, m)
+		} else if contains(account.Tags, "dividends") {
+			resultTyped.Dividends = addBalance(resultTyped.Dividends, m)
+		} else if isDescendent(account, revenueRoots) {
+			resultTyped.NonOperatingRevenue = addBalance(resultTyped.NonOperatingRevenue, m)
+		} else {
+			resultTyped.NonOperatingExpense = addBalance(resultTyped.NonOperatingExpense, m)
+		}
+	}
+
+	ze := &entryType{}
+	z := func(e *entryType) *entryType {
+		if e == nil {
+			return ze
+		} else {
+			return e
+		}
+	}
+
+	resultTyped.NetRevenue = &entryType{
+		Balance: z(resultTyped.GrossRevenue).Balance - z(resultTyped.Deduction).Balance - 
+		z(resultTyped.SalesTax).Balance}
+	resultTyped.GrossProfit = &entryType{
+		Balance: z(resultTyped.NetRevenue).Balance - 
+		z(resultTyped.Cost).Balance}
+	resultTyped.NetOperatingIncome = &entryType{
+		Balance: z(resultTyped.GrossProfit).Balance - 
+		z(resultTyped.OperatingExpense).Balance}
+	resultTyped.IncomeBeforeIncomeTax = &entryType{
+		Balance: z(resultTyped.NetOperatingIncome).Balance + 
+		z(resultTyped.NonOperatingRevenue).Balance -
+		z(resultTyped.NonOperatingExpense).Balance - z(resultTyped.NonOperatingTax).Balance}
+	resultTyped.NetIncome = &entryType{
+		Balance: z(resultTyped.IncomeBeforeIncomeTax).Balance - 
+		z(resultTyped.IncomeTax).Balance - z(resultTyped.Dividends).Balance}
+
+	if resultTyped.NetRevenue.Balance == 0 { resultTyped.NetRevenue = nil }
+	if resultTyped.GrossProfit.Balance == 0 { resultTyped.GrossProfit = nil }
+	if resultTyped.NetOperatingIncome.Balance == 0 { resultTyped.NetOperatingIncome = nil }
+	if resultTyped.IncomeBeforeIncomeTax.Balance == 0 { resultTyped.IncomeBeforeIncomeTax = nil }
+
+	result = resultTyped
+
+	return 
+}
+
 func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, accountFilters map[string]interface{}) (result []map[string]interface{}, err error) {
 	
 	q := datastore.NewQuery("Account").Ancestor(coaKey).Order("Number")
@@ -533,9 +666,13 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 			accountKey, value := e.Account, e.Value
 			for accountKey != nil {
 				item := resultMap[accountKey.String()]
-				account := item["account"].(*Account)
-				item["value"] = item["value"].(float64) + f(account, value)
-				accountKey = account.Parent
+				if item["account"] != nil {
+					account := item["account"].(*Account)
+					item["value"] = item["value"].(float64) + f(account, value)
+					accountKey = account.Parent
+				} else {
+					accountKey = nil
+				}
 			}
 		}
 	}
