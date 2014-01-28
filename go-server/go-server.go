@@ -85,7 +85,13 @@ type notFound struct{ error }
 // If the error is of another type, it is considered as an internal error and its message is logged.
 func errorHandler(f func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error) http.HandlerFunc {
     return func(w http.ResponseWriter, r *http.Request) {
-		credentials := strings.Split(r.Header["Authorization"][0], " ")[1]
+    	var credentials string
+    	if _, ok := r.Header["Authorization"]; ok {
+    		credentials = strings.Split(r.Header["Authorization"][0], " ")[1]	
+    	} else {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return    		
+    	}
 		b, err := base64.StdEncoding.DecodeString(credentials)
 		if err != nil {
 			http.Error(w, "Internal error:" + err.Error(), http.StatusInternalServerError)

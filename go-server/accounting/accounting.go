@@ -11,7 +11,7 @@ import (
 )
 
 type ChartOfAccounts struct {
-	Key *datastore.Key `json:"_id",datastore:"-"`
+	Key *datastore.Key `datastore:"-" json:"_id"`
 	Name string `json:"name"`
 	RetainedEarningsAccount *datastore.Key `json:"retainedEarningsAccount"`
 	User *datastore.Key `json:"user"`
@@ -26,7 +26,7 @@ func (coa *ChartOfAccounts) ValidationMessage(_ appengine.Context, _ map[string]
 }
 
 type Account struct {
-	Key *datastore.Key `json:"_id",datastore:"-"`
+	Key *datastore.Key `datastore:"-" json:"_id"`
 	Number string `json:"number"`
 	Name string `json:"name"`
 	Tags []string `json:"tags"`
@@ -125,7 +125,7 @@ func (account *Account) Credit(value float64) float64 {
 }
 
 type Transaction struct {
-	Key *datastore.Key `json:"_id",datastore:"-"`
+	Key *datastore.Key `datastore:"-" json:"_id"`
 	Debits []Entry `json:"debits"`
 	Credits []Entry `json:"credits"`
 	Date time.Time `json:"date`

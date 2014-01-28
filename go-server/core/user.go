@@ -16,7 +16,7 @@ type User struct {
 
 func InitUserManagement(c appengine.Context) (err error) {
 	var user *User
-	err, user, _ = userByLogin(c, "admin")
+	err, user, _ = userByLogin(c, "admin", true)
 	if err != nil {
 		return
 	}
@@ -31,7 +31,7 @@ func InitUserManagement(c appengine.Context) (err error) {
 }
 
 func Login(c appengine.Context, login, password string) (error, bool, *datastore.Key) {
-	err, user, key := userByLogin(c, login)
+	err, user, key := userByLogin(c, login, false)
 	if err != nil {
 		return err, false, nil
 	}
@@ -45,14 +45,19 @@ func hash(s string) string {
 	return fmt.Sprintf("%x", sha1.New().Sum([]byte(s)))
 }
 
-func userByLogin(c appengine.Context, login string) (err error, user *User, key *datastore.Key) {
+func userByLogin(c appengine.Context, login string, init bool) (err error, user *User, key *datastore.Key) {
 	q := datastore.NewQuery("User").Filter("User = ", login)
 	var users []User
 	keys, err := q.GetAll(c, &users)
-	if err != nil {
-		return
-	}
+	if err != nil { return }
 	if len(users) == 0 {
+		if login == "admin" && !init {
+			if err = InitUserManagement(c); err != nil {
+				return
+			}
+			keys, err = q.GetAll(c, &users)
+			if err != nil { return }
+		}
 		return
 	}
 	user = &users[0]
