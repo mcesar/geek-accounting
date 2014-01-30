@@ -562,15 +562,23 @@ func IncomeStatement(c appengine.Context, m map[string]string, _ *datastore.Key)
 		return false
 	}
 
-	for _, m := range balances {
-		account := m["account"].(*Account)
-		if account.Parent == nil {
-			if contains(account.Tags, "creditBalance") {
-				revenueRoots = append(revenueRoots, account)
-			} else {
-				expenseRoots = append(expenseRoots, account)
+	collectRoots := func(parent *datastore.Key) {
+		for _, m := range balances {
+			account := m["account"].(*Account)
+			if (account.Parent == nil && parent == nil) || account.Parent.String() == parent.String() {
+				if contains(account.Tags, "creditBalance") {
+					revenueRoots = append(revenueRoots, account)
+				} else {
+					expenseRoots = append(expenseRoots, account)
+				}
 			}
-		}
+		}		
+	}
+
+	collectRoots(nil)
+
+	if (len(revenueRoots) + len(expenseRoots)) == 1 {
+		collectRoots(append(revenueRoots, expenseRoots...)[0].Key)
 	}
 
 	for _, m := range balances {
@@ -651,6 +659,7 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 
 	resultMap := map[string]map[string]interface{}{}
 	for i, a := range accounts {
+		a.Key = accountKeys[i]
 		item := map[string]interface{}{"account": a, "value": 0.0}
 		result = append(result, item)
 		resultMap[accountKeys[i].String()] = item
