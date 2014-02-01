@@ -578,7 +578,10 @@ func IncomeStatement(c appengine.Context, m map[string]string, _ *datastore.Key)
 	collectRoots(nil)
 
 	if (len(revenueRoots) + len(expenseRoots)) == 1 {
-		collectRoots(append(revenueRoots, expenseRoots...)[0].Key)
+		parent := append(revenueRoots, expenseRoots...)[0].Key
+		revenueRoots = []*Account{}
+		expenseRoots = []*Account{}
+		collectRoots(parent)
 	}
 
 	for _, m := range balances {
