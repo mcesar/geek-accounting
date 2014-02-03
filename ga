@@ -339,7 +339,7 @@ switch (argv._[0]) {
 					printLine('cost', 'Cost');
 					printLine('grossProfit', 'Gross profit');
 					printLine('operatingExpense', 'Operating expense');
-					printLine('netOperatingIncome', 'Net operating expense');
+					printLine('netOperatingIncome', 'Net operating income');
 					printLine('nonOperatingRevenue', 'Non operating revenue');
 					printLine('nonOperatingExpense', 'Non operating expense');
 					printLine('nonOperatingTax', 'Non operating tax');

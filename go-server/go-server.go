@@ -6,6 +6,7 @@ import (
 	//"io/ioutil"
 	"log"
     "net/http"
+    //"runtime/debug"
     "strings"
     "github.com/gorilla/mux"
     "github.com/mcesarhm/geek-accounting/go-server/accounting"
@@ -23,6 +24,7 @@ func init() {
     r.HandleFunc(PathPrefix, postHandler(accounting.SaveChartOfAccounts)).Methods("POST")
     r.HandleFunc(PathPrefix+"/{coa}/accounts", getAllHandler(accounting.AllAccounts)).Methods("GET")
     r.HandleFunc(PathPrefix+"/{coa}/accounts", postHandler(accounting.SaveAccount)).Methods("POST")
+    r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}", postHandler(accounting.SaveAccount)).Methods("PUT")
     r.HandleFunc(PathPrefix+"/{coa}/transactions", getAllHandler(accounting.AllTransactions)).Methods("GET")
     r.HandleFunc(PathPrefix+"/{coa}/transactions", postHandler(accounting.SaveTransaction)).Methods("POST")
     r.HandleFunc(PathPrefix+"/{coa}/balance-sheet", getAllHandler(accounting.Balance)).Methods("GET")
@@ -98,7 +100,8 @@ func errorHandler(f func(w http.ResponseWriter, r *http.Request, userKey *datast
 			return
 		}
 		arr := strings.Split(string(b), ":")
-		err, ok, userKey := core.Login(appengine.NewContext(r), arr[0], arr[1])
+		c := appengine.NewContext(r)
+		err, ok, userKey := core.Login(c, arr[0], arr[1])
         if err != nil {
 			http.Error(w, "Internal error:" + err.Error(), http.StatusInternalServerError)
 			return

@@ -2,6 +2,7 @@ package accounting
 
 import (
 	//"log"
+	//"runtime/debug"
 	"fmt"
 	"reflect"
 	"strings"
@@ -228,30 +229,43 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 		User: userKey,
 		AsOf: time.Now()}
 
+	isUpdate := false
+
 	if accountKeyAsString, ok := param["account"]; ok {
+		isUpdate = true
 		account.Key, err = datastore.DecodeKey(accountKeyAsString)
-		if err != nil {
-			return
-		}
+		if err != nil { return }
 	}
 
 	coaKey, err := datastore.DecodeKey(param["coa"])
-	if err != nil {
-		return
-	}
+	if err != nil { return }
 
-	var parent []Account
-	if parentNumber, ok := m["parent"]; ok {
-		q := datastore.NewQuery("Account").Ancestor(coaKey).Filter("Number = ", parentNumber)
-		keys, err := q.GetAll(c, &parent)
-		if err != nil {
-			return nil, err
+	parent := &Account{}
+	if isUpdate {
+		var a Account
+		err = datastore.Get(c, account.Key, &a)
+		if err != nil { return }
+		if a.Parent != nil {
+			err = datastore.Get(c, a.Parent, parent)
+			if err != nil { return }
 		}
-		if len(keys) == 0 {
-			return nil, fmt.Errorf("Parent not found")
-		}
-		account.Parent = keys[0]
-		delete(m, "parent")
+		account.Parent = a.Parent
+		account.Number = a.Number
+	} else {
+		if parentNumber, ok := m["parent"]; ok {
+			q := datastore.NewQuery("Account").Ancestor(coaKey).Filter("Number = ", parentNumber)
+			var accounts []Account
+			keys, err := q.GetAll(c, &accounts)
+			if err != nil {
+				return nil, err
+			}
+			if len(keys) == 0 {
+				return nil, fmt.Errorf("Parent not found")
+			}
+			account.Parent = keys[0]
+			parent = &accounts[0]
+			delete(m, "parent")
+		}		
 	}
 
 	var retainedEarningsAccount bool
@@ -259,12 +273,12 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 		if k != "name" && k != "number" {
 			if k == "retainedEarnings" {
 				retainedEarningsAccount = true
-			} else {
+			} else if (!contains(account.Tags, k)) {
 				account.Tags = append(account.Tags, k)
 			}
 		}
 	}
-	if !contains(account.Tags, "analytic") {
+	if !contains(account.Tags, "analytic") && !isUpdate {
 		account.Tags = append(account.Tags, "analytic")
 	}
 
@@ -286,23 +300,21 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 			}
 		}
 
-		if account.Parent != nil {
-			i := indexOf(parent[0].Tags, "analytic")
+		if account.Parent != nil && !isUpdate {
+			i := indexOf(parent.Tags, "analytic")
 			if i != -1 {
-				parent[0].Tags = append(parent[0].Tags[:i], parent[0].Tags[i+1:]...)
+				parent.Tags = append(parent.Tags[:i], parent.Tags[i+1:]...)
 			}
-			if !contains(parent[0].Tags, "synthetic") {
-				parent[0].Tags = append(parent[0].Tags, "synthetic")
+			if !contains(parent.Tags, "synthetic") {
+				parent.Tags = append(parent.Tags, "synthetic")
 			}
-			if _, err = datastore.Put(c, account.Parent, &parent[0]); err != nil {
+			if _, err = datastore.Put(c, account.Parent, &parent); err != nil {
 				return
 			}
 		}
 		return
 	}, nil)
-	if err != nil {
-		return
-	}
+	if err != nil { return }
 
 	item = account
 	return
@@ -578,10 +590,10 @@ func IncomeStatement(c appengine.Context, m map[string]string, _ *datastore.Key)
 	collectRoots(nil)
 
 	if (len(revenueRoots) + len(expenseRoots)) == 1 {
-		parent := append(revenueRoots, expenseRoots...)[0].Key
+		parentKey := append(revenueRoots, expenseRoots...)[0].Key
 		revenueRoots = revenueRoots[0:0]
 		expenseRoots = expenseRoots[0:0]
-		collectRoots(parent)
+		collectRoots(parentKey)
 	}
 
 	for _, m := range balances {
@@ -721,9 +733,7 @@ func save(c appengine.Context, item interface{}, kind string, ancestor string, p
 	var ancestorKey *datastore.Key
 	if len(ancestor) > 0 {
 		ancestorKey, err = datastore.DecodeKey(ancestor)
-		if err != nil {
-			return
-		}
+		if err != nil { return }
 	}
 
 	v := reflect.ValueOf(item).Elem()
@@ -735,9 +745,7 @@ func save(c appengine.Context, item interface{}, kind string, ancestor string, p
 	}
 
 	key, err = datastore.Put(c, key, item)
-	if err != nil {
-		return
-	}
+	if err != nil { return }
 
 	if key != nil {
 		v.FieldByName("Key").Set(reflect.ValueOf(key))
