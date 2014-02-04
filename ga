@@ -324,7 +324,7 @@ switch (argv._[0]) {
 					result = JSON.parse(stdout);
 					function printLine (prop, label) {
 						if (result[prop]) {
-							console.log(label + ': ' + result[prop].balance);
+							console.log(label + ': ' + result[prop].balance.toFixed(2));
 							if (result[prop].details && result[prop].details.length > 0) {
 								printResults(result[prop].details, 
 									[ 'account.number', 'account.name', 'value' ], 
