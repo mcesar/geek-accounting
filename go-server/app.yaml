@@ -8,10 +8,10 @@ handlers:
   script: _go_app
   secure: always
 - url: /(.*\.html)$
-  static_files: ../client/\1
-  upload: /(.*\.html)$
+  static_files: client/\1
+  upload: client/.*\.html
 - url: /js
-  static_dir: ../client/js
+  static_dir: client/js
 - url: /
-  static_files: ../client/index.html
-  upload: ../client/index.html
+  static_files: client/index.html
+  upload: client/index.html

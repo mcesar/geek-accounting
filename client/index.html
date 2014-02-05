@@ -13,9 +13,9 @@
 
   </head>
 
-  <body>
+  <body ng-controller="GaCtrl">
 
-	<div class="container-fluid">
+    <div class="container-fluid">
 
       <!-- Static navbar -->
       <div class="navbar navbar-default" role="navigation">
@@ -30,20 +30,14 @@
           </div>
           <div class="navbar-collapse collapse">
             <ul class="nav navbar-nav">
-              <li class="dropdown">
-                <a href="#" class="dropdown-toggle" data-toggle="dropdown">Plano de Contas <b class="caret"></b></a>
-                <ul class="dropdown-menu">
-                  <li><a href="#">Action</a></li>
-                  <li><a href="#">Another action</a></li>
-                  <li><a href="#">Something else here</a></li>
-                  <li class="divider"></li>
-                  <li class="dropdown-header">Nav header</li>
-                  <li><a href="#">Separated link</a></li>
-                  <li><a href="#">One more separated link</a></li>
-                </ul>
+              <li>
+                <form class="navbar-form navbar-left" role="search">
+                  <select class="form-control" ng-model="selectedCoa" ng-options="coa.name for coa in chartsOfAccounts track by coa._id">
+                  </select>
+                </form>
               </li>
-              <li class="active"><a href="balance-sheet">Balanço</a></li>
-              <li><a href="income-statement">DRE</a></li>
+              <li ng-class="{active: routeIs(['/','/balance-sheet'])}"><a href="#/balance-sheet">Balanço</a></li>
+              <li ng-class="{active: routeIs(['/income-statement'])}"><a href="#/income-statement">DRE</a></li>
             </ul>
           </div><!--/.nav-collapse -->
         </div><!--/.container-fluid -->
@@ -52,10 +46,14 @@
       <div ng-view></div>
 
     </div>
-	<script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
-	<script src="https://netdna.bootstrapcdn.com/bootstrap/3.1.0/js/bootstrap.min.js"></script>
-	<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.2.11/angular.min.js"></script>
-	<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.2.11/angular-route.min.js"></script>
-	<script src="js/ga.js"></script>
+
+  	<script src="https://code.jquery.com/jquery-1.10.2.min.js"></script>
+  	<script src="https://netdna.bootstrapcdn.com/bootstrap/3.1.0/js/bootstrap.min.js"></script>
+  	<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.2.11/angular.min.js"></script>
+  	<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.2.11/angular-route.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.2.11/angular-resource.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-i18n/1.2.10/angular-locale_pt-br.js"></script>
+  	<script src="js/ga.js"></script>
+
   </body>
 </html>

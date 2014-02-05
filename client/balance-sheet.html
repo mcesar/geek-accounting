@@ -1,1 +1,38 @@
-<div>bs</div>
+<div class="row">
+<div class="col-xs-6">
+<table class="table table-striped">
+	<thead>
+		<tr>
+			<th>#</th>
+			<th>Nome</th>
+			<th class="text-right">Valor</th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr ng-repeat="entry in balanceSheet | filter: isDebitBalance">
+			<td>{{entry.account.number}}</td>
+			<td>{{entry.account.name}}</td>
+			<td class="text-right">{{entry.value | number:2}}</td>
+		</tr>
+	</tbody>
+</table>
+</div>
+<div class="col-xs-6">
+<table class="table table-striped">
+	<thead>
+		<tr>
+			<th>#</th>
+			<th>Nome</th>
+			<th class="text-right">Valor</th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr ng-repeat="entry in balanceSheet | filter: isCreditBalance">
+			<td>{{entry.account.number}}</td>
+			<td>{{entry.account.name}}</td>
+			<td class="text-right">{{entry.value | number:2}}</td>
+		</tr>
+	</tbody>
+</table>
+</div>
+</div>
