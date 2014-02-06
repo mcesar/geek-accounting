@@ -1,1 +1,14 @@
-<div>Em breve.</div>
+<ul class="list-unstyled">
+<li ng-repeat="p in properties">
+	<div class="col-xs-12">
+	<strong>{{p.label}}</strong>: {{p.prop.balance | number:2}}
+	<table class="table table-striped">
+		<tr ng-repeat="d in p.prop.details">
+			<td>{{d.account.number}}</td>
+			<td>{{d.account.name}}</td>
+			<td class="text-right">{{d.value | number:2}}</td>
+		</tr>
+	</table>
+	</div>
+</li>
+</ul>

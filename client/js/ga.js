@@ -4,7 +4,7 @@ angular.module('ga.service', ['ngRoute','ngResource'])
     return $resource('/charts-of-accounts', {}, {
       chartsOfAccounts: {method:'GET', params:{}, isArray:true},
       balanceSheet: {method:'GET', params:{}, isArray:true, url: '/charts-of-accounts/:coa/balance-sheet?at=:at'},
-      incomeStatement: {method:'GET', params:{}, isArray:true, url: '/charts-of-accounts/:coa/income-statement?from=:from&to=:to'}
+      incomeStatement: {method:'GET', params:{}, url: '/charts-of-accounts/:coa/income-statement?from=:from&to=:to'}
     });
   }])
 .value('currentChartOfAccounts', {
@@ -90,7 +90,25 @@ var BsCtrl = function ($scope, GaServer, currentChartOfAccounts) {
 };
 
 var IsCtrl = function ($scope, GaServer, currentChartOfAccounts) {
-  $scope.incomeStatement = [];
+  var label = {
+    'grossRevenue': 'Gross revenue',
+    'deduction': 'Gross revenue',
+    'salesTax': 'Sales tax',
+    'netRevenue': 'Net revenue',
+    'cost': 'Cost',
+    'grossProfit': 'Gross profit',
+    'operatingExpense': 'Operating expense',
+    'netOperatingIncome': 'Net operating income',
+    'nonOperatingRevenue': 'Non operating revenue',
+    'nonOperatingExpense': 'Non operating expense',
+    'nonOperatingTax': 'Non operating tax',
+    'incomeBeforeIncomeTax': 'Income before income tax',
+    'incomeTax': 'Income tax',
+    'dividends': 'Dividends',
+    'netIncome': 'Net income'
+  };
+  $scope.incomeStatement = {};
+  $scope.properties = [];
   $scope.currentChartOfAccounts = function () {
     return currentChartOfAccounts.get();
   };
@@ -101,7 +119,20 @@ var IsCtrl = function ($scope, GaServer, currentChartOfAccounts) {
       t = new Date().toJSON();
       t = t.substring(0, t.indexOf('T'));
       f = t.substring(0, 8) + '01'
-      $scope.incomeStatement = GaServer.incomeStatement({coa: currentChartOfAccounts.get(), from: f, to: t});
+      $scope.incomeStatement = GaServer.incomeStatement(
+        {coa: currentChartOfAccounts.get(), from: f, to: t}, 
+        function () {
+          var result = [];
+          for(var p in $scope.incomeStatement) { 
+             if ($scope.incomeStatement.hasOwnProperty(p)) {
+                if (label[p] && $scope.incomeStatement[p]) {
+                  result.push({label: label[p], prop: $scope.incomeStatement[p]});
+                }
+             }
+          }
+          $scope.properties = result;
+        }
+      );
     }
   });
 };
