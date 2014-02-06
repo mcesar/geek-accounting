@@ -13,12 +13,12 @@
 
   </head>
 
-  <body ng-controller="GaCtrl">
+  <body>
 
     <div class="container-fluid">
 
       <!-- Static navbar -->
-      <div class="navbar navbar-default" role="navigation">
+      <div class="navbar navbar-default" role="navigation" ng-controller="NavigatorCtrl">
         <div class="container-fluid">
           <div class="navbar-header">
             <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
@@ -32,7 +32,7 @@
             <ul class="nav navbar-nav">
               <li>
                 <form class="navbar-form navbar-left" role="search">
-                  <select class="form-control" ng-model="selectedCoa" ng-options="coa.name for coa in chartsOfAccounts track by coa._id">
+                  <select class="form-control" ng-model="currentChartOfAccounts" ng-options="coa.name for coa in chartsOfAccounts track by coa._id">
                   </select>
                 </form>
               </li>
