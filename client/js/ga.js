@@ -33,18 +33,27 @@ var NavigatorCtrl = function ($scope, $location, GaServer) {
     return arr[arr.length - 1].split('?')[0];
   }
   $scope.chartsOfAccounts = GaServer.chartsOfAccounts({}, function () {
-    $scope.currentChartOfAccounts = $scope.chartsOfAccounts[0];
+    if ($location.path() === '/') {
+      $scope.currentChartOfAccounts = $scope.chartsOfAccounts[0];
+    } else {
+      var i = 0
+        , arr = $location.path().split('/');
+      for (; i < $scope.chartsOfAccounts.length; i += 1) {
+        if ($scope.chartsOfAccounts[i]._id === arr[2]) {
+          $scope.currentChartOfAccounts = $scope.chartsOfAccounts[i];
+        }
+      };
+    }
   });
   $scope.$watch('currentChartOfAccounts', function (newValue) {
-    if (typeof newValue === 'undefined') { 
-      $location.path('/');
-    } else {
-      var segment = lastSegment();
-      if (segment === '') {
-        segment = 'balance-sheet';
-      }
-      $location.path('/charts-of-accounts/' + $scope.currentChartOfAccounts._id + '/' + segment);
+    if (typeof newValue === 'undefined') { return; }
+    var viewSegment = lastSegment()
+      , coaSegment = '/charts-of-accounts/' + $scope.currentChartOfAccounts._id;
+    if ($location.path().indexOf(coaSegment) === 0) { return; }
+    if (viewSegment === '') {
+      viewSegment = 'balance-sheet';
     }
+    $location.path(coaSegment + '/' + viewSegment);
   });
   $scope.routeIs = function(routes) {
     var i = 0, segment = lastSegment();
