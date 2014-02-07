@@ -50,8 +50,8 @@ var NavigatorCtrl = function ($scope, $rootScope, $location, $http, GaServer) {
   };
   $scope.$watch(function() { return $location.path(); }, function(newValue, oldValue) {
     if (!$scope.isLoggedIn()) {
-      $rootScope.previousPath = $location.path();
-      if ($rootScope.previousPath === '/login') {
+      $rootScope.previousPath = $rootScope.previousPath || $location.path();
+      if (oldValue === '/login') {
         $rootScope.previousPath = '/';
       }
       $location.path('/login');
