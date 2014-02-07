@@ -1,12 +1,11 @@
 angular.module('ga.service', ['ngRoute','ngResource']) 
-.factory('GaServer', ['$resource',
-  function($resource){
-    return $resource('/charts-of-accounts', {}, {
-      chartsOfAccounts: {method:'GET', params:{}, isArray:true},
-      balanceSheet: {method:'GET', params:{}, isArray:true, url: '/charts-of-accounts/:coa/balance-sheet?at=:at'},
-      incomeStatement: {method:'GET', params:{}, url: '/charts-of-accounts/:coa/income-statement?from=:from&to=:to'}
-    });
-  }]);
+.factory('GaServer', ['$resource', function($resource){
+  return $resource('/charts-of-accounts', {}, {
+    chartsOfAccounts: {method:'GET', params:{}, isArray:true},
+    balanceSheet: {method:'GET', params:{}, isArray:true, url: '/charts-of-accounts/:coa/balance-sheet?at=:at'},
+    incomeStatement: {method:'GET', params:{}, url: '/charts-of-accounts/:coa/income-statement?from=:from&to=:to'}
+  });
+}]);
 
 angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
 .config(function ($routeProvider, $locationProvider) {
@@ -19,30 +18,57 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
       controller:'IsCtrl',
       templateUrl:'income-statement.html'
     })
+    .when('/login', {
+      controller:'LoginCtrl',
+      templateUrl:'login.html'
+    })
     .otherwise({
       redirectTo:'/'
     });
-})
-.run(function ($http) {
-  $http.defaults.headers.common['Authorization'] = 'Basic ' + btoa('admin:admin');
 });
 
-var NavigatorCtrl = function ($scope, $location, GaServer) {
+var LoginCtrl = function ($scope, $rootScope, $http, $location, GaServer) {
+  $scope.login = function () {
+    $http.defaults.headers.common['Authorization'] = 'Basic ' + btoa($scope.user + ':' + $scope.password);
+    $http.get('/ping').success(function(data, status, headers, config) {
+      $rootScope.loggedIn = true;
+      $location.path($rootScope.previousPath);
+    }).error(function(data, status, headers, config) {
+      $http.defaults.headers.common['Authorization'] = undefined;
+      $scope.errorMessage = "Login ou senha incorretos";
+    });
+  }
+};
+
+var NavigatorCtrl = function ($scope, $rootScope, $location, $http, GaServer) {
   var lastSegment = function () {
     var arr = $location.path().split('/');
     return arr[arr.length - 1].split('?')[0];
   }
-  $scope.chartsOfAccounts = GaServer.chartsOfAccounts({}, function () {
-    if ($location.path() === '/') {
-      $scope.currentChartOfAccounts = $scope.chartsOfAccounts[0];
-    } else {
-      var i = 0
-        , arr = $location.path().split('/');
-      for (; i < $scope.chartsOfAccounts.length; i += 1) {
-        if ($scope.chartsOfAccounts[i]._id === arr[2]) {
-          $scope.currentChartOfAccounts = $scope.chartsOfAccounts[i];
+  $scope.isLoggedIn = function() {
+    return $rootScope.loggedIn === true;
+  };
+  $scope.$watch(function() { return $location.path(); }, function(newValue, oldValue) {
+    if (!$scope.isLoggedIn()) {
+      $rootScope.previousPath = $location.path();
+      if ($rootScope.previousPath === '/login') {
+        $rootScope.previousPath = '/';
+      }
+      $location.path('/login');
+    } else if (oldValue === '/login') {
+      $scope.chartsOfAccounts = GaServer.chartsOfAccounts({}, function () {
+        if ($location.path() === '/') {
+          $scope.currentChartOfAccounts = $scope.chartsOfAccounts[0];
+        } else {
+          var i = 0
+            , arr = $location.path().split('/');
+          for (; i < $scope.chartsOfAccounts.length; i += 1) {
+            if ($scope.chartsOfAccounts[i]._id === arr[2]) {
+              $scope.currentChartOfAccounts = $scope.chartsOfAccounts[i];
+            }
+          };
         }
-      };
+      });      
     }
   });
   $scope.$watch('currentChartOfAccounts', function (newValue) {

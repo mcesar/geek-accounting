@@ -2,16 +2,15 @@
 <html ng-app="ga" lang="en">
 
   <head>
-	<meta charset="utf-8">
-	<meta http-equiv="X-UA-Compatible" content="IE=edge">
-	<meta name="viewport" content="width=device-width, initial-scale=1">
+  	<meta charset="utf-8">
+  	<meta http-equiv="X-UA-Compatible" content="IE=edge">
+  	<meta name="viewport" content="width=device-width, initial-scale=1">
 
-	<title>Geek Accounting</title>
+  	<title>Geek Accounting</title>
 
-	<link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.0/css/bootstrap.min.css">
-	<link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.0/css/bootstrap-theme.min.css">
-  <link rel="stylesheet" href="css/ga.css">
-
+  	<link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.0/css/bootstrap.min.css">
+  	<link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.0/css/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="css/ga.css">
   </head>
 
   <body>
@@ -19,7 +18,7 @@
     <div class="container-fluid">
 
       <!-- Static navbar -->
-      <div class="navbar navbar-default" role="navigation" ng-controller="NavigatorCtrl">
+      <div class="navbar navbar-default" role="navigation" ng-controller="NavigatorCtrl" ng-show="isLoggedIn()">
         <div class="container-fluid">
           <div class="navbar-header">
             <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
