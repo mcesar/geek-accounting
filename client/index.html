@@ -37,8 +37,12 @@
                   </select>
                 </form>
               </li>
-              <li ng-class="{active: routeIs(['/','/balance-sheet'])}"><a href="#/balance-sheet">Balanço</a></li>
-              <li ng-class="{active: routeIs(['/income-statement'])}"><a href="#/income-statement">DRE</a></li>
+              <li ng-class="{active: routeIs(['balance-sheet'])}">
+                <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/balance-sheet">Balanço</a>
+              </li>
+              <li ng-class="{active: routeIs(['income-statement'])}">
+                <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/income-statement">DRE</a>
+              </li>
             </ul>
           </div><!--/.nav-collapse -->
         </div><!--/.container-fluid -->

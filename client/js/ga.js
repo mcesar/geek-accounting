@@ -6,28 +6,16 @@ angular.module('ga.service', ['ngRoute','ngResource'])
       balanceSheet: {method:'GET', params:{}, isArray:true, url: '/charts-of-accounts/:coa/balance-sheet?at=:at'},
       incomeStatement: {method:'GET', params:{}, url: '/charts-of-accounts/:coa/income-statement?from=:from&to=:to'}
     });
-  }])
-.value('currentChartOfAccounts', {
-  get: function () {
-    return this.id;
-  },
-  set: function (id) {
-    this.id = id;
-  }
-});
+  }]);
 
 angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
 .config(function ($routeProvider, $locationProvider) {
   $routeProvider
-    .when('/', {
+    .when('/charts-of-accounts/:coa/balance-sheet', {
       controller:'BsCtrl',
       templateUrl:'balance-sheet.html'
     })
-    .when('/balance-sheet', {
-      controller:'BsCtrl',
-      templateUrl:'balance-sheet.html'
-    })
-    .when('/income-statement', {
+    .when('/charts-of-accounts/:coa/income-statement', {
       controller:'IsCtrl',
       templateUrl:'income-statement.html'
     })
@@ -39,25 +27,29 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
   $http.defaults.headers.common['Authorization'] = 'Basic ' + btoa('admin:admin');
 });
 
-var NavigatorCtrl = function ($scope, $location, GaServer, currentChartOfAccounts) {
-  $scope.chartsOfAccounts = GaServer.chartsOfAccounts();
-  $scope.currentChartOfAccounts = currentChartOfAccounts.get();
-  $scope.$watch('currentChartOfAccounts', function (newValue) {
-    if (typeof newValue === 'undefined') {
-      currentChartOfAccounts.set(undefined);
-    } else {
-      currentChartOfAccounts.set(newValue._id);
-    }
+var NavigatorCtrl = function ($scope, $location, GaServer) {
+  var lastSegment = function () {
+    var arr = $location.path().split('/');
+    return arr[arr.length - 1].split('?')[0];
+  }
+  $scope.chartsOfAccounts = GaServer.chartsOfAccounts({}, function () {
+    $scope.currentChartOfAccounts = $scope.chartsOfAccounts[0];
   });
-  $scope.$watch('chartsOfAccounts.length', function () {
-    if (typeof $scope.currentChartOfAccounts === 'undefined') {
-      $scope.currentChartOfAccounts = $scope.chartsOfAccounts[0];
+  $scope.$watch('currentChartOfAccounts', function (newValue) {
+    if (typeof newValue === 'undefined') { 
+      $location.path('/');
+    } else {
+      var segment = lastSegment();
+      if (segment === '') {
+        segment = 'balance-sheet';
+      }
+      $location.path('/charts-of-accounts/' + $scope.currentChartOfAccounts._id + '/' + segment);
     }
   });
   $scope.routeIs = function(routes) {
-    var i = 0;
+    var i = 0, segment = lastSegment();
     for (; i < routes.length; i += 1) {
-      if ($location.path() === routes[i]) {
+      if (segment === routes[i]) {
         return true;
       }
     };
@@ -65,20 +57,10 @@ var NavigatorCtrl = function ($scope, $location, GaServer, currentChartOfAccount
   };
 };
 
-var BsCtrl = function ($scope, GaServer, currentChartOfAccounts) {
-  $scope.balanceSheet = [];
-  $scope.currentChartOfAccounts = function () {
-    return currentChartOfAccounts.get();
-  };
-  $scope.$watch('currentChartOfAccounts()', function () {
-    if (typeof currentChartOfAccounts.get() === 'undefined') {
-      $scope.balanceSheet = [];
-    } else {
-      s = new Date().toJSON();
-      s = s.substring(0, s.indexOf('T'));
-      $scope.balanceSheet = GaServer.balanceSheet({coa: currentChartOfAccounts.get(), at: s});
-    }
-  });
+var BsCtrl = function ($scope, $routeParams, GaServer) {
+  s = new Date().toJSON();
+  s = s.substring(0, s.indexOf('T'));
+  $scope.balanceSheet = GaServer.balanceSheet({coa: $routeParams.coa, at: s});
   $scope.isDebitBalance = function (e) {
     return e && e.account && 
       (e.account.debitBalance && e.account.name.indexOf('(-)') === -1) ||
@@ -89,7 +71,7 @@ var BsCtrl = function ($scope, GaServer, currentChartOfAccounts) {
   }
 };
 
-var IsCtrl = function ($scope, GaServer, currentChartOfAccounts) {
+var IsCtrl = function ($scope, $routeParams, GaServer) {
   var label = {
     'grossRevenue': 'Gross revenue',
     'deduction': 'Gross revenue',
@@ -107,32 +89,22 @@ var IsCtrl = function ($scope, GaServer, currentChartOfAccounts) {
     'dividends': 'Dividends',
     'netIncome': 'Net income'
   };
-  $scope.incomeStatement = {};
   $scope.properties = [];
-  $scope.currentChartOfAccounts = function () {
-    return currentChartOfAccounts.get();
-  };
-  $scope.$watch('currentChartOfAccounts()', function () {
-    if (typeof currentChartOfAccounts.get() === 'undefined') {
-      $scope.incomeStatement = [];
-    } else {
-      t = new Date().toJSON();
-      t = t.substring(0, t.indexOf('T'));
-      f = t.substring(0, 8) + '01'
-      $scope.incomeStatement = GaServer.incomeStatement(
-        {coa: currentChartOfAccounts.get(), from: f, to: t}, 
-        function () {
-          var result = [];
-          for(var p in $scope.incomeStatement) { 
-             if ($scope.incomeStatement.hasOwnProperty(p)) {
-                if (label[p] && $scope.incomeStatement[p]) {
-                  result.push({label: label[p], prop: $scope.incomeStatement[p]});
-                }
-             }
-          }
-          $scope.properties = result;
-        }
-      );
+  t = new Date().toJSON();
+  t = t.substring(0, t.indexOf('T'));
+  f = t.substring(0, 8) + '01'
+  $scope.incomeStatement = GaServer.incomeStatement(
+    {coa: $routeParams.coa, from: f, to: t}, 
+    function () {
+      var result = [];
+      for(var p in $scope.incomeStatement) { 
+         if ($scope.incomeStatement.hasOwnProperty(p)) {
+            if (label[p] && $scope.incomeStatement[p]) {
+              result.push({label: label[p], prop: $scope.incomeStatement[p]});
+            }
+         }
+      }
+      $scope.properties = result;
     }
-  });
+  );
 };
