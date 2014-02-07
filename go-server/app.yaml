@@ -10,6 +10,8 @@ handlers:
 - url: /(.*\.html)$
   static_files: client/\1
   upload: client/.*\.html
+- url: /css
+  static_dir: client/css
 - url: /js
   static_dir: client/js
 - url: /
