@@ -51,7 +51,7 @@ var NavigatorCtrl = function ($scope, $rootScope, $location, $http, GaServer) {
   $scope.$watch(function() { return $location.path(); }, function(newValue, oldValue) {
     if (!$scope.isLoggedIn()) {
       $rootScope.previousPath = $rootScope.previousPath || $location.path();
-      if (oldValue === '/login') {
+      if ($rootScope.previousPath === '/login') {
         $rootScope.previousPath = '/';
       }
       $location.path('/login');
@@ -73,13 +73,13 @@ var NavigatorCtrl = function ($scope, $rootScope, $location, $http, GaServer) {
   });
   $scope.$watch('currentChartOfAccounts', function (newValue) {
     if (typeof newValue === 'undefined') { return; }
-    var viewSegment = lastSegment()
-      , coaSegment = '/charts-of-accounts/' + $scope.currentChartOfAccounts._id;
-    if ($location.path().indexOf(coaSegment) === 0) { return; }
-    if (viewSegment === '') {
-      viewSegment = 'balance-sheet';
+    var arr = $location.path().split('/');
+    if (arr.length > 2 && arr[2] === newValue._id) { return; }
+    if (arr.length === 2) {
+      arr = [ '', 'charts-of-accounts', newValue._id, 'balance-sheet' ];
     }
-    $location.path(coaSegment + '/' + viewSegment);
+    arr[2] = newValue._id;
+    $location.path(arr.join('/'));
   });
   $scope.routeIs = function(routes) {
     var i = 0, segment = lastSegment();
