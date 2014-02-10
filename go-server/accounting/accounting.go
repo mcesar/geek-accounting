@@ -690,16 +690,16 @@ func IncomeStatement(c appengine.Context, m map[string]string, _ *datastore.Key)
 		Balance: z(resultTyped.IncomeBeforeIncomeTax).Balance -
 			z(resultTyped.IncomeTax).Balance - z(resultTyped.Dividends).Balance}
 
-	if resultTyped.NetRevenue.Balance == 0 {
+	if resultTyped.NetRevenue.Balance == 0 || (z(resultTyped.Deduction).Balance == 0 && z(resultTyped.SalesTax).Balance == 0) {
 		resultTyped.NetRevenue = nil
 	}
-	if resultTyped.GrossProfit.Balance == 0 {
+	if resultTyped.GrossProfit.Balance == 0 || z(resultTyped.Cost).Balance == 0 {
 		resultTyped.GrossProfit = nil
 	}
 	if resultTyped.NetOperatingIncome.Balance == 0 {
 		resultTyped.NetOperatingIncome = nil
 	}
-	if resultTyped.IncomeBeforeIncomeTax.Balance == 0 {
+	if resultTyped.IncomeBeforeIncomeTax.Balance == 0 || z(resultTyped.NonOperatingTax).Balance == 0 {
 		resultTyped.IncomeBeforeIncomeTax = nil
 	}
 
