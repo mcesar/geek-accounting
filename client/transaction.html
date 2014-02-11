@@ -1,0 +1,57 @@
+<div class="col-sm-10 col-sm-offset-1">
+<form class="form-inline" role="form">
+  <div ng-show="errorMessage">
+		<div class="alert alert-danger">
+			{{errorMessage}}
+		</div>
+  </div>
+  <div class="form-group">
+  	<input type="text" class="form-control" id="conta" placeholder="Conta" autofocus ng-model="account" ng-change="errorMessage=undefined" ga-focus="accountFocus">
+  </div>
+  <div class="form-group">
+    <input type="number" class="form-control" id="debito" placeholder="Débito" ng-model="debit" ng-change="errorMessage=undefined">
+  </div>
+  <div class="form-group">
+    <input type="number" class="form-control" id="credito" placeholder="Crédito" ng-model="credit" ng-change="errorMessage=undefined">
+  </div>
+  <button class="btn btn-default" ng-click="addEntry();accountFocus = debitsSum() != creditsSum()">Adicionar</button>
+  <br>
+	<table class="table table-striped" ng-show="entries.length > 0">
+	  <thead>
+	  	<tr>
+	  	  <th><strong>Conta</strong></th>
+	  	  <th class="text-right"><strong>Débito</strong></th>
+	  	  <th class="text-right"><strong>Crédito</strong></th>
+	  	</tr>
+	  </thead>
+	  <tbody>	  	
+	    <tr ng-repeat="e in entries">
+	      <td>{{e.e.account}}</td>
+		  	<td class="text-right">{{e.debit | number:2}}</td>
+		  	<td class="text-right">{{e.credit | number:2}}</td>
+	    </tr>
+	  </tbody>
+	  <tfoot>
+	  	<tr>
+	  		<td><strong>Total</strong></td>
+	  		<td class="text-right">{{debitsSum() | number:2}}</td>
+	  		<td class="text-right">{{creditsSum() | number:2}}</td>
+	  	</tr>
+	  </tfoot>
+	</table>
+</form>
+<form class="form" role="form">
+	<br ng-show="entries.length == 0">
+  <div class="form-group">
+  	<input type="date" class="form-control width-auto" placeholder="Data" ng-model="date" ng-change="errorMessage=undefined">
+  </div>
+  <div class="form-group">
+  	<textarea class="form-control" rows="3" placeholder="Memorando" ng-model="transaction.memo" ng-change="errorMessage=undefined">
+  	</textarea>
+  </div>
+	<div class="form-group">
+		<button class="btn btn-default" ng-click="addAndContinue(); accountFocus = true">Salvar e continuar</button>
+		<button class="btn btn-default" ng-click="add()">Salvar</button>
+	</div>
+</form>
+</div>
