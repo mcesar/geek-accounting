@@ -1,0 +1,34 @@
+<form class="form-horizontal" role="form">
+  <div ng-show="errorMessage">
+		<div class="alert alert-danger">
+			{{errorMessage}}
+		</div>
+  </div>
+  <div class="form-group">
+  	<label class="col-sm-2 text-right" for="number">#</label>
+  	<div class="col-sm-2">
+  		<input type="text" class="form-control" id="number" autofocus ng-model="account.number" ng-change="errorMessage=undefined">
+  	</div>
+  </div>
+  <div class="form-group">
+  	<label class="col-sm-2 text-right" for="name">Nome:</label>
+  	<div class="col-sm-6">
+  		<input type="text" class="form-control" id="name" ng-model="account.name" ng-change="errorMessage=undefined">
+  	</div>
+  </div>
+  <div class="form-group">
+  	<label class="col-sm-2 text-right" for="parent">Pai:</label>
+  	<div class="col-sm-2">
+  		<input type="text" class="form-control" id="parent" ng-model="account.parent" ng-change="errorMessage=undefined" account-typeahead>
+  	</div>
+  </div>
+  <div class="form-group">
+  	<label class="col-sm-2 text-right" for="tags">Tags:</label>
+  	<div class="col-sm-6">
+  		<input type="text" class="form-control" id="tags" ng-model="tags" ng-change="errorMessage=undefined">
+  	</div>
+  </div>
+  <div class="col-sm-offset-2">
+  	<button class="btn btn-default" ng-click="add()">Salvar</button>
+  </div>
+</form>

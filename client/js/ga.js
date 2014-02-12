@@ -1,37 +1,47 @@
 angular.module('ga.service', ['ngRoute','ngResource']) 
-.factory('GaServer', ['$resource', function($resource){
+.factory('GaServer', function ($resource, $cacheFactory){
   return $resource('/charts-of-accounts', {}, {
     chartsOfAccounts: {method:'GET', params:{}, isArray:true},
-    balanceSheet: {method:'GET', params:{}, isArray:true, url: '/charts-of-accounts/:coa/balance-sheet?at=:at'},
-    incomeStatement: {method:'GET', params:{}, url: '/charts-of-accounts/:coa/income-statement?from=:from&to=:to'},
-    addTransaction: {method:'POST', params:{}, url: '/charts-of-accounts/:coa/transactions'}
+    accounts: {method:'GET', params:{}, isArray:true, cache: $cacheFactory('accounts'), url:'/charts-of-accounts/:coa/accounts'},
+    balanceSheet: {method:'GET', params:{}, isArray:true, url:'/charts-of-accounts/:coa/balance-sheet?at=:at'},
+    incomeStatement: {method:'GET', params:{}, url:'/charts-of-accounts/:coa/income-statement?from=:from&to=:to'},
+    addAccount: {method:'POST', params:{}, url:'/charts-of-accounts/:coa/accounts'},
+    addTransaction: {method:'POST', params:{}, url:'/charts-of-accounts/:coa/transactions'}
   });
-}]);
+});
 
 angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
 .config(function ($routeProvider, $locationProvider) {
   $routeProvider
+    .when('/charts-of-accounts/:coa/accounts', {
+      controller:'AccountsCtrl',
+      templateUrl:'partials/accounts.html'
+    })
+    .when('/charts-of-accounts/:coa/edit-account', {
+      controller:'AccountsCtrl',
+      templateUrl:'partials/edit-account.html'
+    })
     .when('/charts-of-accounts/:coa/balance-sheet', {
       controller:'BsCtrl',
-      templateUrl:'balance-sheet.html'
+      templateUrl:'partials/balance-sheet.html'
     })
     .when('/charts-of-accounts/:coa/income-statement', {
       controller:'IsCtrl',
-      templateUrl:'income-statement.html'
+      templateUrl:'partials/income-statement.html'
     })
     .when('/charts-of-accounts/:coa/transaction', {
       controller:'TransactionCtrl',
-      templateUrl:'transaction.html'
+      templateUrl:'partials/transaction.html'
     })
     .when('/login', {
       controller:'LoginCtrl',
-      templateUrl:'login.html'
+      templateUrl:'partials/login.html'
     })
     .otherwise({
       redirectTo:'/'
     });
 })
-.directive('gaFocus', function() {
+.directive('gaFocus', function () {
   return {
     scope: { trigger: '=gaFocus' },
     link: function(scope, element) {
@@ -41,6 +51,55 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
           scope.trigger = false;
         }
       });
+    }
+  };
+})
+.directive("accountTypeahead", function ($routeParams, $rootScope, $compile, GaServer) {
+  return {
+    restrict: 'A',
+    require: '?ngModel',
+    link: function(scope, element, attrs, ngModel){
+
+      var source = function (query, cb) {
+        var accounts = GaServer.accounts({coa: $routeParams.coa}, function () {
+          var map = {}, result = [], i;
+          var containsQuery = function (account, query) {
+            if (!account) { return false; }
+            if (account.number.indexOf(query) > -1 || account.name.toLowerCase().indexOf(query.toLowerCase()) > -1) {
+              return true;
+            }
+            return containsQuery(map[account.parent], query);
+          };
+          for (i = 0; i < accounts.length; i += 1) {
+            map[accounts[i]._id] = accounts[i];
+          }
+          for (i = 0; i < accounts.length; i += 1) {
+            if (containsQuery(accounts[i], query)) {
+              result.push(accounts[i]);
+            }
+          }
+          cb(result);
+        });
+      }
+
+      var templateFn = function (datum) {
+        return '<p><strong>' + datum.number + '</strong></p><p>' + datum.name + '</p>';
+      };
+       
+      element.typeahead(null, {
+        displayKey: 'number',
+        source: source,
+        templates: {
+          suggestion: templateFn
+        }
+      })
+      .on('typeahead:selected', function($e, datum) { 
+        ngModel.$setViewValue(datum.number);
+      })
+      .on('typeahead:onAutocompleted', function($e, datum) { 
+        ngModel.$setViewValue(datum.number);
+      });
+
     }
   };
 });
@@ -58,7 +117,7 @@ var LoginCtrl = function ($scope, $rootScope, $http, $location, GaServer) {
   }
 };
 
-var NavigatorCtrl = function ($scope, $rootScope, $location, $http, GaServer) {
+var NavigatorCtrl = function ($scope, $rootScope, $location, $http, $cacheFactory, GaServer) {
   var lastSegment = function () {
     var arr = $location.path().split('/');
     return arr[arr.length - 1].split('?')[0];
@@ -70,9 +129,20 @@ var NavigatorCtrl = function ($scope, $rootScope, $location, $http, GaServer) {
     switch (lastSegment()) {
     case 'transaction':
       return ': lançamento';
+    case 'edit-account':
+      return ': nova conta';
     default:
       return '';
     }
+  };
+  $scope.routeIs = function(routes) {
+    var i = 0, segment = lastSegment();
+    for (; i < routes.length; i += 1) {
+      if (segment === routes[i]) {
+        return true;
+      }
+    };
+    return false;
   };
   $scope.$watch(function() { return $location.path(); }, function(newValue, oldValue) {
     if (!$scope.isLoggedIn()) {
@@ -106,15 +176,26 @@ var NavigatorCtrl = function ($scope, $rootScope, $location, $http, GaServer) {
     }
     arr[2] = newValue._id;
     $location.path(arr.join('/'));
+    $cacheFactory.get('accounts').removeAll();
   });
-  $scope.routeIs = function(routes) {
-    var i = 0, segment = lastSegment();
-    for (; i < routes.length; i += 1) {
-      if (segment === routes[i]) {
-        return true;
-      }
-    };
-    return false;
+};
+
+var AccountsCtrl = function ($scope, $routeParams, $cacheFactory, GaServer) {
+  $scope.account = {};
+  $scope.accounts = GaServer.accounts({coa: $routeParams.coa});
+  $scope.add = function () {
+    var tags = ($scope.tags || '').split(','), i;
+    for (i = 0; i < tags.length; i += 1) {
+      $scope.account[tags[i]] = true;
+    }
+    GaServer.addAccount({coa: $routeParams.coa}, $scope.account, function () {
+      $cacheFactory.get('accounts').removeAll();
+      $scope.account = {};
+      $scope.tags = undefined;
+      $scope.errorMessage = undefined;
+    }, function (response) {
+      $scope.errorMessage = response.data.replace('Error: ', '');
+    });
   };
 };
 
@@ -192,11 +273,13 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
     });
   };
   var clear = function () {
+    $scope.account = undefined;
     $scope.transaction = {debits:[], credits:[]};
     $scope.entries = [];
     $scope.date = new Date().toISOString().substring(0, 10);    
   };
   clear();
+  $scope.accountFocus = true;
   $scope.add = function () {
     add(function () { $window.history.back(); });
   };
@@ -210,8 +293,14 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
       return;
     }
     if (!$scope.debit && !$scope.credit) {
-      $scope.errorMessage = "Ou o débito ou o crédito deve ser informado";
-      return;
+      if ($scope.debitsSum() === $scope.creditsSum()) {
+        $scope.errorMessage = "Ou o débito ou o crédito deve ser informado";
+        return;
+      } else if ($scope.debitsSum() > $scope.creditsSum()) {
+        $scope.credit = $scope.debitsSum() - $scope.creditsSum();
+      } else {
+        $scope.debit = $scope.creditsSum() - $scope.debitsSum();
+      }
     }
     if ($scope.debit) {
       entry = {e: {account: $scope.account, value: $scope.debit}, debit: $scope.debit};
@@ -222,6 +311,13 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
         $scope.transaction.credits.push(entry.e)
       }
     }
+    var accounts = GaServer.accounts({coa: $routeParams.coa}, function () {
+      for (var i = 0; i < accounts.length; i++) {
+        if (accounts[i].number === entry.e.account) {
+          entry.account = accounts[i];
+        }
+      }
+    });
     $scope.entries.push(entry);
     $scope.account = $scope.debit = $scope.credit = undefined;
     $scope.errorMessage = undefined;

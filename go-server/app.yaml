@@ -17,6 +17,8 @@ handlers:
   static_dir: client/css
 - url: /js
   static_dir: client/js
+- url: /partials
+  static_dir: client/partials
 - url: /
   static_files: client/index.html
   upload: client/index.html

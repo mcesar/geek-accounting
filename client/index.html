@@ -10,6 +10,7 @@
 
   	<link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.0/css/bootstrap.min.css">
   	<link rel="stylesheet" href="//netdna.bootstrapcdn.com/bootstrap/3.1.0/css/bootstrap-theme.min.css">
+    <link rel="stylesheet" href="css/typeahead.css">
     <link rel="stylesheet" href="css/ga.css">
   </head>
 
@@ -43,10 +44,14 @@
               <li ng-class="{active: routeIs(['income-statement'])}">
                 <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/income-statement">DRE</a>
               </li>
-              <li class="dropdown" ng-class="{active: routeIs(['transaction'])}">
+              <li ng-class="{active: routeIs(['accounts'])}">
+                <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/accounts">Plano de Contas</a>
+              </li>
+              <li class="dropdown" ng-class="{active: routeIs(['transaction','edit-account'])}">
                 <a href="" class="dropdown-toggle" data-toggle="dropdown">Ações {{actionLabel()}}<b class="caret"></b></a>
                 <ul class="dropdown-menu">
                   <li><a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/transaction">Lançamento</a></li>
+                  <li><a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/edit-account">Nova Conta</a></li>
                 </ul>
               </li>
             </ul>
@@ -64,6 +69,7 @@
   	<script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.2.11/angular-route.min.js"></script>
     <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.2.11/angular-resource.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/angular-i18n/1.2.10/angular-locale_pt-br.js"></script>
+    <script src="https://cdn.jsdelivr.net/typeahead.js/0.10.1/typeahead.bundle.min.js"></script>
   	<script src="js/ga.js"></script>
 
   </body>

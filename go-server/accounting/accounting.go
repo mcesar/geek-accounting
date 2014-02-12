@@ -316,7 +316,7 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 			if !contains(parent.Tags, "synthetic") {
 				parent.Tags = append(parent.Tags, "synthetic")
 			}
-			if _, err = datastore.Put(c, account.Parent, &parent); err != nil {
+			if _, err = datastore.Put(c, account.Parent, parent); err != nil {
 				return
 			}
 		}
