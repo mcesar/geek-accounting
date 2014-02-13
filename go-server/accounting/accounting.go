@@ -490,11 +490,15 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 	var account *Account
 	accountsMap := map[string]*Account{}
 	for i, a := range accounts {
-		if a.Number == m["account"] {
+		if a.Number == m["account"] || accountKeys[i].Encode() == m["account"] {
 			account = a
 			account.Key = accountKeys[i]
 		}
 		accountsMap[accountKeys[i].String()] = a
+	}
+	if account == nil {
+		err = fmt.Errorf("Account not found")
+		return
 	}
 
 	q = datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date <=", to).Order("Date").Order("AsOf")

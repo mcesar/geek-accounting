@@ -5,6 +5,7 @@ angular.module('ga.service', ['ngRoute','ngResource'])
     accounts: {method:'GET', params:{}, isArray:true, cache: $cacheFactory('accounts'), url:'/charts-of-accounts/:coa/accounts'},
     balanceSheet: {method:'GET', params:{}, isArray:true, url:'/charts-of-accounts/:coa/balance-sheet?at=:at'},
     incomeStatement: {method:'GET', params:{}, url:'/charts-of-accounts/:coa/income-statement?from=:from&to=:to'},
+    ledger: {method:'GET', params:{}, url:'/charts-of-accounts/:coa/accounts/:account/ledger?from=:from&to=:to'},
     addAccount: {method:'POST', params:{}, url:'/charts-of-accounts/:coa/accounts'},
     addTransaction: {method:'POST', params:{}, url:'/charts-of-accounts/:coa/transactions'}
   });
@@ -28,6 +29,10 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
     .when('/charts-of-accounts/:coa/income-statement', {
       controller:'IsCtrl',
       templateUrl:'partials/income-statement.html'
+    })
+    .when('/charts-of-accounts/:coa/accounts/:account/ledger', {
+      controller:'LedgerCtrl',
+      templateUrl:'partials/ledger.html'
     })
     .when('/charts-of-accounts/:coa/transaction', {
       controller:'TransactionCtrl',
@@ -200,7 +205,7 @@ var AccountsCtrl = function ($scope, $routeParams, $cacheFactory, GaServer) {
 };
 
 var BsCtrl = function ($scope, $routeParams, GaServer) {
-  s = new Date().toJSON();
+  var s = new Date().toJSON();
   s = s.substring(0, s.indexOf('T'));
   $scope.balanceSheet = GaServer.balanceSheet({coa: $routeParams.coa, at: s});
   $scope.isDebitBalance = function (e) {
@@ -210,6 +215,9 @@ var BsCtrl = function ($scope, $routeParams, GaServer) {
   }
   $scope.isCreditBalance = function (e) {
     return !$scope.isDebitBalance(e);
+  }
+  $scope.currentChartOfAccounts = function () {
+    return $routeParams.coa;
   }
 };
 
@@ -231,10 +239,10 @@ var IsCtrl = function ($scope, $routeParams, GaServer) {
     'dividends': 'Dividends',
     'netIncome': 'Net income'
   };
-  $scope.properties = [];
-  t = new Date().toJSON();
+  var t = new Date().toJSON(), f;
   t = t.substring(0, t.indexOf('T'));
   f = t.substring(0, 8) + '01'
+  $scope.properties = [];
   $scope.incomeStatement = GaServer.incomeStatement(
     {coa: $routeParams.coa, from: f, to: t}, 
     function () {
@@ -249,6 +257,22 @@ var IsCtrl = function ($scope, $routeParams, GaServer) {
       $scope.properties = result;
     }
   );
+  $scope.currentChartOfAccounts = function () {
+    return $routeParams.coa;
+  }
+};
+
+var LedgerCtrl = function ($scope, $routeParams, GaServer) {
+  var t = new Date().toJSON(), f;
+  t = t.substring(0, t.indexOf('T'));
+  f = t.substring(0, 8) + '01'
+  $scope.ledger = GaServer.ledger({coa: $routeParams.coa, account: $routeParams.account, from: f, to: t});
+  $scope.convertToUTC = function(dt) {
+    var localDate = new Date(dt);
+    var localTime = localDate.getTime();
+    var localOffset = localDate.getTimezoneOffset() * 60000;
+    return new Date(localTime + localOffset);
+  };
 };
 
 var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {

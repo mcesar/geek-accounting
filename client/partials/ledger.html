@@ -1,0 +1,33 @@
+<div class="row">
+	<div class="col-xs-12">
+		<strong>{{ledger.account.number}}</strong>&nbsp;–&nbsp;<strong>{{ledger.account.name}}</strong>. Saldo:&nbsp;<strong>{{ledger.balance | number:2}}</strong>
+	</div>
+</div>
+<div class="row">
+	<div class="col-xs-12">
+		<table class="table table-striped">
+			<thead>
+				<tr>
+					<th><strong>Data</strong></th>
+					<th><strong>Memorando</strong></th>
+					<th><strong># da Conta</strong></th>
+					<th><strong>Nome da Conta</strong></th>
+					<th><strong>Débito</strong></th>
+					<th><strong>Crédito</strong></th>
+					<th><strong>Saldo</strong></th>
+				</tr>
+			</thead>
+			<tbody>
+				<tr ng-repeat="e in ledger.entries">
+					<td>{{convertToUTC(e.date) | date:'shortDate'}}</td>
+					<td>{{e.memo}}</td>
+					<td>{{e.counterpart.number}}</td>
+					<td>{{e.counterpart.name}}</td>
+					<td class="text-right">{{e.debit | number:2}}</td>
+					<td class="text-right">{{e.credit | number:2}}</td>
+					<td class="text-right">{{e.balance | number:2}}</td>
+				</tr>
+			</tbody>
+		</table>
+	</div>
+</div>
