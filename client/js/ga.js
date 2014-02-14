@@ -63,7 +63,7 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
   return {
     restrict: 'A',
     require: '?ngModel',
-    link: function(scope, element, attrs, ngModel){
+    link: function(scope, element, attrs, ngModel) {
 
       var source = function (query, cb) {
         var accounts = GaServer.accounts({coa: $routeParams.coa}, function () {
@@ -297,7 +297,7 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
     });
   };
   var clear = function () {
-    $scope.account = undefined;
+    $scope.account = null;
     $scope.transaction = {debits:[], credits:[]};
     $scope.entries = [];
     $scope.date = new Date().toISOString().substring(0, 10);    
@@ -308,7 +308,10 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
     add(function () { $window.history.back(); });
   };
   $scope.addAndContinue = function () {
-    add(function () { clear(); });
+    add(function () { 
+      clear(); 
+      $scope.accountFocus = true; 
+    });
   };
   $scope.addEntry = function () {
     var entry;

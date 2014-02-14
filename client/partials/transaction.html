@@ -6,7 +6,7 @@
 		</div>
   </div>
   <div class="form-group">
-  	<input type="text" class="form-control" id="conta" placeholder="Conta" autofocus ng-model="account" ng-change="errorMessage=undefined" ga-focus="accountFocus" account-typeahead="selectedAccount">
+  	<input type="text" class="form-control" id="conta" placeholder="Conta" autofocus ng-model="account" ng-change="errorMessage=undefined" ga-focus="accountFocus" account-typeahead>
   </div>
   <div class="form-group">
     <input type="number" class="form-control" id="debito" placeholder="Débito" ng-model="debit" ng-change="errorMessage=undefined">
@@ -52,7 +52,7 @@
   	</textarea>
   </div>
 	<div class="form-group">
-		<button class="btn btn-default" ng-click="addAndContinue(); accountFocus = true">Salvar e continuar</button>
+		<button class="btn btn-default" ng-click="addAndContinue()">Salvar e continuar</button>
 		<button class="btn btn-default" ng-click="add()">Salvar</button>
 	</div>
 </form>
