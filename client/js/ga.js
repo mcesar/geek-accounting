@@ -105,6 +105,12 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
         ngModel.$setViewValue(datum.number);
       });
 
+      scope.$watch(attrs.ngModel, function(newValue, oldValue) {
+        if (newValue === null && oldValue !== null) {
+          element.typeahead('val', null);
+        }
+      });
+
     }
   };
 });
