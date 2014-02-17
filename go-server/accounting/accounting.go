@@ -129,7 +129,7 @@ type Transaction struct {
 	Key     *datastore.Key `datastore:"-" json:"_id"`
 	Debits  []Entry        `json:"debits"`
 	Credits []Entry        `json:"credits"`
-	Date    time.Time      `json:"date`
+	Date    time.Time      `json:"date"`
 	Memo    string         `json:"memo"`
 	Tags    []string       `json:"tags"`
 	User    *datastore.Key `json:"user"`
@@ -334,6 +334,21 @@ func AllTransactions(c appengine.Context, param map[string]string, _ *datastore.
 	return getAll(c, &[]Transaction{}, "Transaction", param["coa"], []string{"Date", "AsOf"})
 }
 
+func GetTransaction(c appengine.Context, param map[string]string, _ *datastore.Key) (result interface{}, err error) {
+	key, err := datastore.DecodeKey(param["transaction"])
+	if err != nil {
+		return
+	}
+	var t Transaction
+	err = datastore.Get(c, key, &t)
+	if err != nil {
+		return
+	}
+	t.Key = key
+	result = t
+	return
+}
+
 func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
 
 	transaction := &Transaction{
@@ -383,6 +398,19 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 	item = transaction
 
 	return
+}
+
+func DeleteTransaction(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (_ interface{}, err error) {
+
+	key, err := datastore.DecodeKey(param["transaction"])
+	if err != nil {
+		return
+	}
+
+	err = datastore.Delete(c, key)
+
+	return
+
 }
 
 func Balance(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {

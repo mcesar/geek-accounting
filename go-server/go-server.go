@@ -27,6 +27,8 @@ func init() {
 	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}", postHandler(accounting.SaveAccount)).Methods("PUT")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions", getAllHandler(accounting.AllTransactions)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions", postHandler(accounting.SaveTransaction)).Methods("POST")
+	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}", getAllHandler(accounting.GetTransaction)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}", deleteHandler(accounting.DeleteTransaction)).Methods("DELETE")
 	r.HandleFunc(PathPrefix+"/{coa}/balance-sheet", getAllHandler(accounting.Balance)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/journal", getAllHandler(accounting.Journal)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}/ledger", getAllHandler(accounting.Ledger)).Methods("GET")
@@ -64,6 +66,7 @@ func postHandler(f func(appengine.Context, map[string]interface{}, map[string]st
 			log.Println(string(b))
 		*/
 		var req interface{}
+
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			return badRequest{err}
 		}
@@ -75,6 +78,18 @@ func postHandler(f func(appengine.Context, map[string]interface{}, map[string]st
 		}
 
 		json.NewEncoder(w).Encode(item)
+
+		return nil
+	})
+}
+
+func deleteHandler(f func(appengine.Context, map[string]interface{}, map[string]string, *datastore.Key) (interface{}, error)) http.HandlerFunc {
+	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error {
+
+		_, err := f(appengine.NewContext(r), nil, mux.Vars(r), userKey)
+		if err != nil {
+			return badRequest{err}
+		}
 
 		return nil
 	})

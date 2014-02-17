@@ -1,0 +1,24 @@
+<ul class="list-unstyled">
+	<li ng-repeat="e in journal">
+		<strong>{{convertToUTC(e.date) | date:'shortDate'}}</strong>
+		<table class="table">
+			<tbody>
+				<tr ng-repeat="d in e.debits">
+					<td>&nbsp;</td>
+					<td>{{d.account.number}}</td>
+					<td>{{d.account.name}}</td>
+					<td class="text-right">{{d.value | number:2}}</td>
+					<td>&nbsp;</td>
+				</tr>
+				<tr ng-repeat="c in e.credits">
+					<td><span ng-show="$first">a</span>&nbsp;</td>
+					<td>{{c.account.number}}</td>
+					<td>{{c.account.name}}</td>
+					<td>&nbsp;</td>
+					<td class="text-right">{{c.value | number:2}}</td>
+				</tr>
+			</tbody>
+		</table>
+		<div><a href="#/charts-of-accounts/{{currentChartOfAccounts()}}/transaction/{{e._id}}">{{e.memo}}</a><br><br></div>
+	</li>
+</ul>

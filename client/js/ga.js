@@ -3,11 +3,14 @@ angular.module('ga.service', ['ngRoute','ngResource'])
   return $resource('/charts-of-accounts', {}, {
     chartsOfAccounts: {method:'GET', params:{}, isArray:true},
     accounts: {method:'GET', params:{}, isArray:true, cache: $cacheFactory('accounts'), url:'/charts-of-accounts/:coa/accounts'},
+    transaction: {method:'GET', params:{}, url:'/charts-of-accounts/:coa/transactions/:transaction'},
     balanceSheet: {method:'GET', params:{}, isArray:true, url:'/charts-of-accounts/:coa/balance-sheet?at=:at'},
     incomeStatement: {method:'GET', params:{}, url:'/charts-of-accounts/:coa/income-statement?from=:from&to=:to'},
     ledger: {method:'GET', params:{}, url:'/charts-of-accounts/:coa/accounts/:account/ledger?from=:from&to=:to'},
+    journal: {method:'GET', params:{}, isArray:true, url:'/charts-of-accounts/:coa/journal?from=:from&to=:to'},
     addAccount: {method:'POST', params:{}, url:'/charts-of-accounts/:coa/accounts'},
-    addTransaction: {method:'POST', params:{}, url:'/charts-of-accounts/:coa/transactions'}
+    addTransaction: {method:'POST', params:{}, url:'/charts-of-accounts/:coa/transactions'},
+    removeTransaction: {method:'DELETE', params:{}, url:'/charts-of-accounts/:coa/transactions/:transaction'}
   });
 });
 
@@ -34,7 +37,15 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
       controller:'LedgerCtrl',
       templateUrl:'partials/ledger.html'
     })
+    .when('/charts-of-accounts/:coa/journal', {
+      controller:'JournalCtrl',
+      templateUrl:'partials/journal.html'
+    })
     .when('/charts-of-accounts/:coa/transaction', {
+      controller:'TransactionCtrl',
+      templateUrl:'partials/transaction.html'
+    })
+    .when('/charts-of-accounts/:coa/transaction/:transaction', {
       controller:'TransactionCtrl',
       templateUrl:'partials/transaction.html'
     })
@@ -273,15 +284,21 @@ var LedgerCtrl = function ($scope, $routeParams, GaServer) {
   t = t.substring(0, t.indexOf('T'));
   f = t.substring(0, 8) + '01'
   $scope.ledger = GaServer.ledger({coa: $routeParams.coa, account: $routeParams.account, from: f, to: t});
-  $scope.convertToUTC = function(dt) {
-    var localDate = new Date(dt);
-    var localTime = localDate.getTime();
-    var localOffset = localDate.getTimezoneOffset() * 60000;
-    return new Date(localTime + localOffset);
-  };
+  $scope.convertToUTC = convertToUTC;
+};
+
+var JournalCtrl = function ($scope, $routeParams, GaServer) {
+  var t = new Date().toJSON();
+  t = t.substring(0, t.indexOf('T'));
+  $scope.journal = GaServer.journal({coa: $routeParams.coa, from: t, to: t});
+  $scope.convertToUTC = convertToUTC;
+  $scope.currentChartOfAccounts = function () {
+    return $routeParams.coa;
+  }
 };
 
 var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
+  var t
   var add = function (callback) {
     if ($scope.transaction.debits.length < 1 || $scope.transaction.credits.length < 1) {
       $scope.errorMessage = "Devem ser informados pelo menos um débito e pelo menos um crédito";
@@ -306,10 +323,35 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
     $scope.account = null;
     $scope.transaction = {debits:[], credits:[]};
     $scope.entries = [];
-    $scope.date = new Date().toISOString().substring(0, 10);    
+    $scope.date = new Date().toISOString().substring(0, 10);
   };
   clear();
   $scope.accountFocus = true;
+  if ($routeParams.transaction) {
+    t = GaServer.transaction({coa: $routeParams.coa, transaction: $routeParams.transaction}, function () {
+      var accounts;
+      $scope.transaction = t;
+      $scope.date = t.date.substring(0, 10);
+      accounts = GaServer.accounts({coa: $routeParams.coa}, function () {
+        var map = {}, a, i;
+        for (i = 0; i < accounts.length; i += 1) {
+          map[accounts[i]._id] = accounts[i];
+        }
+        function add (account, value, balanceNature) {
+          var entry = {e: {account: account.number, value: value}, account: account};
+          entry[balanceNature] = value;
+          $scope.entries.push(entry);
+
+        }
+        for (i = 0; i < t.debits.length; i += 1) {
+          add(map[t.debits[i].account], t.debits[i].value, 'debit');
+        }
+        for (i = 0; i < t.credits.length; i += 1) {
+          add(map[t.credits[i].account], t.credits[i].value, 'credit');
+        }
+      });
+    });
+  }
   $scope.add = function () {
     add(function () { $window.history.back(); });
   };
@@ -355,6 +397,11 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
     $scope.account = $scope.debit = $scope.credit = undefined;
     $scope.errorMessage = undefined;
   };
+  $scope.remove = function () {
+    GaServer.removeTransaction({coa: $routeParams.coa, transaction: $routeParams.transaction}, function () {
+      $window.history.back();
+    });
+  }
   $scope.debitsSum = function () {
     var result = 0, i = 0;
     for (; i < $scope.transaction.debits.length; i += 1) {
@@ -369,4 +416,14 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
     }
     return result;
   };
+  $scope.transactionId = function () {
+    return $routeParams.transaction;
+  };
+}
+
+function convertToUTC (dt) {
+  var localDate = new Date(dt);
+  var localTime = localDate.getTime();
+  var localOffset = localDate.getTimezoneOffset() * 60000;
+  return new Date(localTime + localOffset);
 }
