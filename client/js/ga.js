@@ -141,27 +141,32 @@ var LoginCtrl = function ($scope, $rootScope, $http, $location, GaServer) {
 };
 
 var NavigatorCtrl = function ($scope, $rootScope, $location, $http, $cacheFactory, GaServer) {
-  var lastSegment = function () {
+  var isLastSegment = function (segment) {
     var arr = $location.path().split('/');
-    return arr[arr.length - 1].split('?')[0];
+    if (arr[arr.length - 1].split('?')[0] === segment) {
+      return true;
+    } else if (arr.length > 1 && arr[arr.length - 2] === segment) {
+      return true;
+    } else {
+      return false;
+    }
   }
   $scope.isLoggedIn = function() {
     return $rootScope.loggedIn === true;
   };
   $scope.actionLabel = function() {
-    switch (lastSegment()) {
-    case 'transaction':
+    if (isLastSegment('transaction')) {
       return ': lançamento';
-    case 'edit-account':
+    } else if (isLastSegment('edit-account')) {
       return ': nova conta';
-    default:
+    } else {
       return '';
     }
   };
   $scope.routeIs = function(routes) {
-    var i = 0, segment = lastSegment();
-    for (; i < routes.length; i += 1) {
-      if (segment === routes[i]) {
+    var i;
+    for (i = 0; i < routes.length; i += 1) {
+      if (isLastSegment(routes[i])) {
         return true;
       }
     };
@@ -286,6 +291,9 @@ var LedgerCtrl = function ($scope, $routeParams, GaServer) {
   f = t.substring(0, 8) + '01'
   $scope.ledger = GaServer.ledger({coa: $routeParams.coa, account: $routeParams.account, from: f, to: t});
   $scope.convertToUTC = convertToUTC;
+  $scope.currentChartOfAccounts = function () {
+    return $routeParams.coa;
+  }
 };
 
 var JournalCtrl = function ($scope, $routeParams, GaServer) {

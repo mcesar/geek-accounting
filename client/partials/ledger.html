@@ -19,7 +19,7 @@
 			<tbody>
 				<tr ng-repeat="e in ledger.entries">
 					<td>{{convertToUTC(e.date) | date:'shortDate'}}</td>
-					<td>{{e.memo}}</td>
+					<td><a href="#/charts-of-accounts/{{currentChartOfAccounts()}}/transaction/{{e._id}}">{{e.memo}}</a></td>
 					<td>{{e.counterpart.number}}</td>
 					<td>{{e.counterpart.name}}</td>
 					<td class="text-right">{{e.debit | number:2}}</td>

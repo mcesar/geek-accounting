@@ -539,7 +539,7 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 
 	q = datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date <=", to).Order("Date").Order("AsOf")
 	var transactions []*Transaction
-	_, err = q.GetAll(c, &transactions)
+	keys, err := q.GetAll(c, &transactions)
 	if err != nil {
 		return
 	}
@@ -557,6 +557,7 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 				balance = runningBalance
 			} else {
 				entry := map[string]interface{}{
+					"_id":     t.Key,
 					"date":    t.Date,
 					"memo":    t.Memo,
 					"balance": runningBalance,
@@ -577,7 +578,8 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 		return
 	}
 
-	for _, t := range transactions {
+	for i, t := range transactions {
+		t.Key = keys[i]
 		addEntries(t, t.Debits, t.Credits, (*Account).Debit, "debit")
 		addEntries(t, t.Credits, t.Debits, (*Account).Credit, "credit")
 	}
