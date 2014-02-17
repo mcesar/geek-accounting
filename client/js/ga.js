@@ -10,6 +10,7 @@ angular.module('ga.service', ['ngRoute','ngResource'])
     journal: {method:'GET', params:{}, isArray:true, url:'/charts-of-accounts/:coa/journal?from=:from&to=:to'},
     addAccount: {method:'POST', params:{}, url:'/charts-of-accounts/:coa/accounts'},
     addTransaction: {method:'POST', params:{}, url:'/charts-of-accounts/:coa/transactions'},
+    updateTransaction: {method:'PUT', params:{}, url:'/charts-of-accounts/:coa/transactions/:transaction'},
     removeTransaction: {method:'DELETE', params:{}, url:'/charts-of-accounts/:coa/transactions/:transaction'}
   });
 });
@@ -299,7 +300,7 @@ var JournalCtrl = function ($scope, $routeParams, GaServer) {
 
 var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
   var t
-  var add = function (callback) {
+  var save = function (callback) {
     if ($scope.transaction.debits.length < 1 || $scope.transaction.credits.length < 1) {
       $scope.errorMessage = "Devem ser informados pelo menos um débito e pelo menos um crédito";
       return;
@@ -313,11 +314,19 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
       return;
     }
     $scope.transaction.date = $scope.date + 'T00:00:00Z';
-    GaServer.addTransaction({coa: $routeParams.coa}, $scope.transaction, function () {
-      if (callback) callback();
-    }, function (response) {
-      $scope.errorMessage = response.data.replace('Error: ', '');
-    });
+    if ($routeParams.transaction) {
+      GaServer.updateTransaction({coa: $routeParams.coa, transaction: $routeParams.transaction}, $scope.transaction, function () {
+        if (callback) callback();
+      }, function (response) {
+        $scope.errorMessage = response.data.replace('Error: ', '');
+      });
+    } else {
+      GaServer.addTransaction({coa: $routeParams.coa}, $scope.transaction, function () {
+        if (callback) callback();
+      }, function (response) {
+        $scope.errorMessage = response.data.replace('Error: ', '');
+      });
+    }
   };
   var clear = function () {
     $scope.account = null;
@@ -344,19 +353,23 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
 
         }
         for (i = 0; i < t.debits.length; i += 1) {
-          add(map[t.debits[i].account], t.debits[i].value, 'debit');
+          a = map[t.debits[i].account];
+          add(a, t.debits[i].value, 'debit');
+          t.debits[i].account = a.number;
         }
         for (i = 0; i < t.credits.length; i += 1) {
+          a = map[t.credits[i].account];
           add(map[t.credits[i].account], t.credits[i].value, 'credit');
+          t.credits[i].account = a.number;
         }
       });
     });
   }
-  $scope.add = function () {
-    add(function () { $window.history.back(); });
+  $scope.save = function () {
+    save(function () { $window.history.back(); });
   };
   $scope.addAndContinue = function () {
-    add(function () { 
+    save(function () { 
       clear(); 
       $scope.accountFocus = true; 
     });
@@ -397,6 +410,14 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
     $scope.account = $scope.debit = $scope.credit = undefined;
     $scope.errorMessage = undefined;
   };
+  $scope.removeEntry = function (index) {
+    function removeOnTransaction (col) {
+      col.splice(col.indexOf($scope.entries[index].e), 1);
+    }
+    removeOnTransaction($scope.transaction.debits);
+    removeOnTransaction($scope.transaction.credits);
+    $scope.entries.splice(index, 1);
+  }
   $scope.remove = function () {
     GaServer.removeTransaction({coa: $routeParams.coa, transaction: $routeParams.transaction}, function () {
       $window.history.back();

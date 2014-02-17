@@ -390,7 +390,15 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 		return
 	}
 
-	transactionKey, err := save(c, transaction, "Transaction", param["coa"], param)
+	var transactionKey *datastore.Key
+	if _, ok := param["transaction"]; ok {
+		transaction.Key, err = datastore.DecodeKey(param["transaction"])
+		if err != nil {
+			return
+		}
+	}
+
+	transactionKey, err = save(c, transaction, "Transaction", param["coa"], param)
 	if err != nil {
 		return
 	}

@@ -23,6 +23,7 @@
 	  	  <th><strong>Conta</strong></th>
 	  	  <th class="text-right"><strong>Débito</strong></th>
 	  	  <th class="text-right"><strong>Crédito</strong></th>
+	  	  <th></th>
 	  	</tr>
 	  </thead>
 	  <tbody>	  	
@@ -31,6 +32,7 @@
 	      <td>{{e.account.name}}</td>
 		  	<td class="text-right">{{e.debit | number:2}}</td>
 		  	<td class="text-right">{{e.credit | number:2}}</td>
+		  	<td class="text-right text-muted"><span class="glyphicon glyphicon-remove" ng-click="removeEntry($index)"></span></td>
 	    </tr>
 	  </tbody>
 	  <tfoot>
@@ -38,6 +40,7 @@
 	  		<td colspan="2"><strong>Total</strong></td>
 	  		<td class="text-right">{{debitsSum() | number:2}}</td>
 	  		<td class="text-right">{{creditsSum() | number:2}}</td>
+	  		<td></td>
 	  	</tr>
 	  </tfoot>
 	</table>
@@ -53,7 +56,7 @@
   </div>
 	<div class="form-group">
 		<button class="btn btn-default" ng-click="addAndContinue()" ng-show="!transactionId()">Salvar e continuar</button>
-		<button class="btn btn-default" ng-click="add()">Salvar</button>
+		<button class="btn btn-default" ng-click="save()">Salvar</button>
 		<button class="btn btn-danger" ng-click="remove()" ng-show="transactionId()">Excluir</button>
 	</div>
 </form>

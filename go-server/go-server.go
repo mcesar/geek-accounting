@@ -27,6 +27,7 @@ func init() {
 	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}", postHandler(accounting.SaveAccount)).Methods("PUT")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions", getAllHandler(accounting.AllTransactions)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions", postHandler(accounting.SaveTransaction)).Methods("POST")
+	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}", postHandler(accounting.SaveTransaction)).Methods("PUT")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}", getAllHandler(accounting.GetTransaction)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}", deleteHandler(accounting.DeleteTransaction)).Methods("DELETE")
 	r.HandleFunc(PathPrefix+"/{coa}/balance-sheet", getAllHandler(accounting.Balance)).Methods("GET")
