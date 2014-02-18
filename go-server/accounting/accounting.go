@@ -45,7 +45,15 @@ var inheritedProperties = map[string]string{
 	"cost":            "income statement attribute",
 	"nonOperatingTax": "income statement attribute",
 	"incomeTax":       "income statement attribute",
-	"dividends":       "income statement attribute"}
+	"dividends":       "income statement attribute",
+}
+
+var nonInheritedProperties = map[string]string{
+	"debitBalance":  "",
+	"creditBalance": "",
+	"analytic":      "",
+	"synthetic":     "",
+}
 
 func (account *Account) ValidationMessage(c appengine.Context, param map[string]string) string {
 	if len(strings.TrimSpace(account.Number)) == 0 {
@@ -220,6 +228,10 @@ func AllAccounts(c appengine.Context, param map[string]string, _ *datastore.Key)
 	return getAll(c, &[]Account{}, "Account", param["coa"], []string{"Number"})
 }
 
+func GetAccount(c appengine.Context, param map[string]string, _ *datastore.Key) (result interface{}, err error) {
+	return get(c, &Account{}, param["account"])
+}
+
 func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
 
 	account := &Account{
@@ -278,11 +290,15 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 
 	var retainedEarningsAccount bool
 	for k, _ := range m {
-		if k != "name" && k != "number" {
+		if k != "name" && k != "number" && k != "number" {
 			if k == "retainedEarnings" {
 				retainedEarningsAccount = true
 			} else if !contains(account.Tags, k) {
-				account.Tags = append(account.Tags, k)
+				_, ok1 := inheritedProperties[k]
+				_, ok2 := nonInheritedProperties[k]
+				if ok1 || ok2 {
+					account.Tags = append(account.Tags, k)
+				}
 			}
 		}
 	}
@@ -335,18 +351,7 @@ func AllTransactions(c appengine.Context, param map[string]string, _ *datastore.
 }
 
 func GetTransaction(c appengine.Context, param map[string]string, _ *datastore.Key) (result interface{}, err error) {
-	key, err := datastore.DecodeKey(param["transaction"])
-	if err != nil {
-		return
-	}
-	var t Transaction
-	err = datastore.Get(c, key, &t)
-	if err != nil {
-		return
-	}
-	t.Key = key
-	result = t
-	return
+	return get(c, &Transaction{}, param["transaction"])
 }
 
 func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
@@ -433,7 +438,7 @@ func DeleteAccount(c appengine.Context, m map[string]interface{}, param map[stri
 		return
 	}
 
-	checkReferences := func (kind, property, errorMessage string) error {
+	checkReferences := func(kind, property, errorMessage string) error {
 		q := datastore.NewQuery(kind).Ancestor(coaKey).Filter(property, key).KeysOnly()
 		var keys []*datastore.Key
 		if keys, err = q.GetAll(c, nil); err != nil {
@@ -872,6 +877,21 @@ func getAll(c appengine.Context, items interface{}, kind string, ancestor string
 		v.Index(i).FieldByName("Key").Set(reflect.ValueOf(keys[i]))
 	}
 	return items, err
+}
+
+func get(c appengine.Context, item interface{}, keyAsString string) (result interface{}, err error) {
+	key, err := datastore.DecodeKey(keyAsString)
+	if err != nil {
+		return
+	}
+	err = datastore.Get(c, key, item)
+	if err != nil {
+		return
+	}
+	v := reflect.ValueOf(item).Elem()
+	v.FieldByName("Key").Set(reflect.ValueOf(key))
+	result = item
+	return
 }
 
 func save(c appengine.Context, item interface{}, kind string, ancestor string, param map[string]string) (key *datastore.Key, err error) {

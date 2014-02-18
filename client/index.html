@@ -38,26 +38,26 @@
                   </select>
                 </form>
               </li>
-              <li ng-class="{active: routeIs(['balance-sheet'])}">
+              <li ng-class="{active: routeIs('balance-sheet$')}">
                 <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/balance-sheet">Balanço</a>
               </li>
-              <li ng-class="{active: routeIs(['income-statement'])}">
+              <li ng-class="{active: routeIs('income-statement$')}">
                 <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/income-statement">DRE</a>
               </li>
-              <li ng-class="{active: routeIs(['ledger'])}" ng-if="routeIs(['ledger'])">
+              <li ng-class="{active: routeIs('ledger$')}" ng-if="routeIs(['ledger'])">
                 <a href="">Razão</a>
               </li>
-              <li ng-class="{active: routeIs(['journal'])}">
+              <li ng-class="{active: routeIs('journal$')}">
                 <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/journal">Diário</a>
               </li>
-              <li ng-class="{active: routeIs(['accounts'])}">
+              <li ng-class="{active: routeIs('accounts$')}">
                 <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/accounts">Plano de Contas</a>
               </li>
-              <li class="dropdown" ng-class="{active: routeIs(['transaction','edit-account'])}">
+              <li class="dropdown" ng-class="{active: routeIs('transaction$|account$|accounts\/[^\/]+$')}">
                 <a href="" class="dropdown-toggle" data-toggle="dropdown">Ações {{actionLabel()}}<b class="caret"></b></a>
                 <ul class="dropdown-menu">
                   <li><a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/transaction">Lançamento</a></li>
-                  <li><a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/edit-account">Nova Conta</a></li>
+                  <li><a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/account">Nova Conta</a></li>
                 </ul>
               </li>
             </ul>

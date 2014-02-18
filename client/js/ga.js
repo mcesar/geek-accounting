@@ -3,6 +3,7 @@ angular.module('ga.service', ['ngRoute','ngResource'])
   return $resource('/charts-of-accounts', {}, {
     chartsOfAccounts: {method:'GET', params:{}, isArray:true},
     accounts: {method:'GET', params:{}, isArray:true, cache: $cacheFactory('accounts'), url:'/charts-of-accounts/:coa/accounts'},
+    account: {method:'GET', params:{}, url:'/charts-of-accounts/:coa/accounts/:account'},
     transaction: {method:'GET', params:{}, url:'/charts-of-accounts/:coa/transactions/:transaction'},
     balanceSheet: {method:'GET', params:{}, isArray:true, url:'/charts-of-accounts/:coa/balance-sheet?at=:at'},
     incomeStatement: {method:'GET', params:{}, url:'/charts-of-accounts/:coa/income-statement?from=:from&to=:to'},
@@ -10,8 +11,10 @@ angular.module('ga.service', ['ngRoute','ngResource'])
     journal: {method:'GET', params:{}, isArray:true, url:'/charts-of-accounts/:coa/journal?from=:from&to=:to'},
     addAccount: {method:'POST', params:{}, url:'/charts-of-accounts/:coa/accounts'},
     addTransaction: {method:'POST', params:{}, url:'/charts-of-accounts/:coa/transactions'},
+    updateAccount: {method:'PUT', params:{}, url:'/charts-of-accounts/:coa/accounts/:account'},
     updateTransaction: {method:'PUT', params:{}, url:'/charts-of-accounts/:coa/transactions/:transaction'},
-    removeTransaction: {method:'DELETE', params:{}, url:'/charts-of-accounts/:coa/transactions/:transaction'}
+    removeTransaction: {method:'DELETE', params:{}, url:'/charts-of-accounts/:coa/transactions/:transaction'},
+    removeAccount: {method:'DELETE', params:{}, url:'/charts-of-accounts/:coa/accounts/:account'}
   });
 });
 
@@ -22,9 +25,13 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
       controller:'AccountsCtrl',
       templateUrl:'partials/accounts.html'
     })
-    .when('/charts-of-accounts/:coa/edit-account', {
+    .when('/charts-of-accounts/:coa/account', {
       controller:'AccountsCtrl',
-      templateUrl:'partials/edit-account.html'
+      templateUrl:'partials/account.html'
+    })
+    .when('/charts-of-accounts/:coa/accounts/:account', {
+      controller:'AccountsCtrl',
+      templateUrl:'partials/account.html'
     })
     .when('/charts-of-accounts/:coa/balance-sheet', {
       controller:'BsCtrl',
@@ -155,22 +162,18 @@ var NavigatorCtrl = function ($scope, $rootScope, $location, $http, $cacheFactor
     return $rootScope.loggedIn === true;
   };
   $scope.actionLabel = function() {
-    if (isLastSegment('transaction')) {
+    if ($scope.routeIs('transaction$')) {
       return ': lançamento';
-    } else if (isLastSegment('edit-account')) {
+    } else if ($scope.routeIs('account$')) {
       return ': nova conta';
+    } else if ($scope.routeIs('accounts\/[^\/]+$')) {
+      return ': edição de conta';
     } else {
       return '';
     }
   };
-  $scope.routeIs = function(routes) {
-    var i;
-    for (i = 0; i < routes.length; i += 1) {
-      if (isLastSegment(routes[i])) {
-        return true;
-      }
-    };
-    return false;
+  $scope.routeIs = function(pattern) {
+    return new RegExp(pattern).test($location.path());
   };
   $scope.$watch(function() { return $location.path(); }, function(newValue, oldValue) {
     if (!$scope.isLoggedIn()) {
@@ -208,23 +211,61 @@ var NavigatorCtrl = function ($scope, $rootScope, $location, $http, $cacheFactor
   });
 };
 
-var AccountsCtrl = function ($scope, $routeParams, $cacheFactory, GaServer) {
+var AccountsCtrl = function ($scope, $routeParams, $cacheFactory, $window, GaServer) {
+  var account
   $scope.account = {};
   $scope.accounts = GaServer.accounts({coa: $routeParams.coa});
-  $scope.add = function () {
+  $scope.save = function () {
     var tags = ($scope.tags || '').split(','), i;
+    var showError = function (response) {
+      $scope.errorMessage = response.data.replace('Error: ', '');
+    };
     for (i = 0; i < tags.length; i += 1) {
       $scope.account[tags[i]] = true;
     }
-    GaServer.addAccount({coa: $routeParams.coa}, $scope.account, function () {
-      $cacheFactory.get('accounts').removeAll();
-      $scope.account = {};
-      $scope.tags = undefined;
-      $scope.errorMessage = undefined;
-    }, function (response) {
-      $scope.errorMessage = response.data.replace('Error: ', '');
-    });
+    if ($routeParams.account) {
+      GaServer.updateAccount({coa: $routeParams.coa, account: $routeParams.account}, $scope.account, function () {
+        $cacheFactory.get('accounts').removeAll();
+        $window.history.back();
+      }, showError);
+    } else {
+      GaServer.addAccount({coa: $routeParams.coa}, $scope.account, function () {
+        $cacheFactory.get('accounts').removeAll();
+        $scope.account = {};
+        $scope.tags = undefined;
+        $scope.errorMessage = undefined;
+      }, showError);
+    }
   };
+  $scope.remove = function () {
+    GaServer.removeAccount({coa: $routeParams.coa, account: $routeParams.account}, function () {
+      $cacheFactory.get('accounts').removeAll();
+      $window.history.back();
+    });
+  }
+
+  $scope.currentChartOfAccounts = function () {
+    return $routeParams.coa;
+  }
+  $scope.accountId = function () {
+    return $routeParams.account;
+  };
+
+  if ($routeParams.account) {
+    account = GaServer.account({coa: $routeParams.coa, account: $routeParams.account}, function () {
+      var accounts;
+      $scope.account = { _id: account._id, name: account.name, number: account.number };
+      $scope.tags = account.tags.join(',');
+      accounts = GaServer.accounts({coa: $routeParams.coa}, function () {
+        var i;
+        for (i = 0; i < accounts.length; i += 1) {
+          if (accounts[i]._id === account.parent) {
+            $scope.account.parent = accounts[i].number;
+          }
+        }
+      });
+    });
+  }
 };
 
 var BsCtrl = function ($scope, $routeParams, GaServer) {

@@ -7,8 +7,8 @@
 	</thead>
 	<tbody>
 		<tr ng-repeat="a in accounts">
-			<td>{{a.number}}</td>
-			<td>{{a.name}}</td>
+			<td><a href="#/charts-of-accounts/{{currentChartOfAccounts()}}/accounts/{{a._id}}">{{a.number}}</a></td>
+			<td><a href="#/charts-of-accounts/{{currentChartOfAccounts()}}/accounts/{{a._id}}">{{a.name}}</a></td>
 		</tr>
 	</tbody>
 </table>

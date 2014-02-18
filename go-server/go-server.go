@@ -23,6 +23,7 @@ func init() {
 	r.HandleFunc(PathPrefix, getAllHandler(accounting.AllChartsOfAccounts)).Methods("GET")
 	r.HandleFunc(PathPrefix, postHandler(accounting.SaveChartOfAccounts)).Methods("POST")
 	r.HandleFunc(PathPrefix+"/{coa}/accounts", getAllHandler(accounting.AllAccounts)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}", getAllHandler(accounting.GetAccount)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/accounts", postHandler(accounting.SaveAccount)).Methods("POST")
 	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}", postHandler(accounting.SaveAccount)).Methods("PUT")
 	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}", deleteHandler(accounting.DeleteAccount)).Methods("DELETE")
