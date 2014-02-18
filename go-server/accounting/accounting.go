@@ -421,6 +421,49 @@ func DeleteTransaction(c appengine.Context, m map[string]interface{}, param map[
 
 }
 
+func DeleteAccount(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (_ interface{}, err error) {
+
+	key, err := datastore.DecodeKey(param["account"])
+	if err != nil {
+		return
+	}
+
+	coaKey, err := datastore.DecodeKey(param["coa"])
+	if err != nil {
+		return
+	}
+
+	checkReferences := func (kind, property, errorMessage string) error {
+		q := datastore.NewQuery(kind).Ancestor(coaKey).Filter(property, key).KeysOnly()
+		var keys []*datastore.Key
+		if keys, err = q.GetAll(c, nil); err != nil {
+			return err
+		}
+		if len(keys) > 0 {
+			return fmt.Errorf(errorMessage)
+		}
+		return nil
+	}
+
+	err = checkReferences("Account", "Parent = ", "Child accounts found")
+	if err != nil {
+		return
+	}
+	err = checkReferences("Transaction", "Debits.Account = ", "Transactions referencing this account was found")
+	if err != nil {
+		return
+	}
+	err = checkReferences("Transaction", "Credits.Account = ", "Transactions referencing this account was found")
+	if err != nil {
+		return
+	}
+
+	err = datastore.Delete(c, key)
+
+	return
+
+}
+
 func Balance(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
 	coaKey, err := datastore.DecodeKey(m["coa"])
 	if err != nil {
