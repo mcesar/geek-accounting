@@ -53,7 +53,7 @@
               <li ng-class="{active: routeIs('accounts$')}">
                 <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/accounts">Plano de Contas</a>
               </li>
-              <li class="dropdown" ng-class="{active: routeIs('transaction$|account$|accounts\/[^\/]+$')}">
+              <li class="dropdown" ng-class="{active: routeIs('transaction$|transactions\/[^\/]+$|account$|accounts\/[^\/]+$')}">
                 <a href="" class="dropdown-toggle" data-toggle="dropdown">Ações {{actionLabel()}}<b class="caret"></b></a>
                 <ul class="dropdown-menu">
                   <li><a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/transaction">Lançamento</a></li>

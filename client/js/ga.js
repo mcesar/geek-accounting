@@ -53,7 +53,7 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
       controller:'TransactionCtrl',
       templateUrl:'partials/transaction.html'
     })
-    .when('/charts-of-accounts/:coa/transaction/:transaction', {
+    .when('/charts-of-accounts/:coa/transactions/:transaction', {
       controller:'TransactionCtrl',
       templateUrl:'partials/transaction.html'
     })
@@ -164,6 +164,8 @@ var NavigatorCtrl = function ($scope, $rootScope, $location, $http, $cacheFactor
   $scope.actionLabel = function() {
     if ($scope.routeIs('transaction$')) {
       return ': lançamento';
+    } else if ($scope.routeIs('transactions\/[^\/]+$')) {
+      return ': edição de lançamento';
     } else if ($scope.routeIs('account$')) {
       return ': nova conta';
     } else if ($scope.routeIs('accounts\/[^\/]+$')) {
