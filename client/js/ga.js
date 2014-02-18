@@ -420,7 +420,13 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
   };
   $scope.removeEntry = function (index) {
     function removeOnTransaction (col) {
-      col.splice(col.indexOf($scope.entries[index].e), 1);
+      var i;
+      for (i = 0; i < col.length; i += 1) {
+        if (col[i].account === $scope.entries[index].e.account && col[i].value === $scope.entries[index].e.value) {
+          col.splice(i, 1);
+          return
+        }
+      }
     }
     removeOnTransaction($scope.transaction.debits);
     removeOnTransaction($scope.transaction.credits);
