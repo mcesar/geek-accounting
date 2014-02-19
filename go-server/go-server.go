@@ -45,6 +45,7 @@ func init() {
 	r.HandleFunc("/ping", errorHandler(func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error {
 		return nil
 	}))
+	r.HandleFunc("/password", postHandler(core.ChangePassword)).Methods("PUT")
 	http.Handle("/", r)
 }
 

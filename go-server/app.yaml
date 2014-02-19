@@ -10,6 +10,12 @@ handlers:
 - url: /ping
   script: _go_app
   secure: always
+- url: /password
+  script: _go_app
+  secure: always
+- url: /users.*
+  script: _go_app
+  secure: always
 - url: /(.*\.html)$
   static_files: client/\1
   upload: client/.*\.html

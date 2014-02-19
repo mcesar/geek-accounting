@@ -14,7 +14,8 @@ angular.module('ga.service', ['ngRoute','ngResource'])
     updateAccount: {method:'PUT', params:{}, url:'/charts-of-accounts/:coa/accounts/:account'},
     updateTransaction: {method:'PUT', params:{}, url:'/charts-of-accounts/:coa/transactions/:transaction'},
     removeTransaction: {method:'DELETE', params:{}, url:'/charts-of-accounts/:coa/transactions/:transaction'},
-    removeAccount: {method:'DELETE', params:{}, url:'/charts-of-accounts/:coa/accounts/:account'}
+    removeAccount: {method:'DELETE', params:{}, url:'/charts-of-accounts/:coa/accounts/:account'},
+    password: {method:'PUT', params:{}, url:'/password'},
   });
 });
 
@@ -56,6 +57,10 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
     .when('/charts-of-accounts/:coa/transactions/:transaction', {
       controller:'TransactionCtrl',
       templateUrl:'partials/transaction.html'
+    })
+    .when('/password', {
+      controller:'PasswordCtrl',
+      templateUrl:'partials/password.html'
     })
     .when('/login', {
       controller:'LoginCtrl',
@@ -170,6 +175,8 @@ var NavigatorCtrl = function ($scope, $rootScope, $location, $http, $cacheFactor
       return ': nova conta';
     } else if ($scope.routeIs('accounts\/[^\/]+$')) {
       return ': edição de conta';
+    } else if ($scope.routeIs('password$')) {
+      return ': alteração de senha';
     } else {
       return '';
     }
@@ -496,6 +503,23 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
   };
   $scope.transactionId = function () {
     return $routeParams.transaction;
+  };
+}
+
+var PasswordCtrl = function ($scope, $window, $http, $timeout, GaServer) {
+  $scope.change = function () {
+    if ($scope.newPassword != $scope.newPasswordRetyped) {
+      $scope.errorMessage = "A senha nova é diferente de sua confirmação";
+    }
+    GaServer.password({oldPassword: $scope.oldPassword, newPassword: $scope.newPassword}, function () {
+      var user = atob($http.defaults.headers.common['Authorization'].substring(6)).split(':')[0];
+      $http.defaults.headers.common['Authorization'] = 'Basic ' + btoa(user + ':' + $scope.newPassword);
+      $timeout(function () {
+        $window.history.back();
+      }, 100);
+    }, function (response) {
+      $scope.errorMessage = response.data.replace('Error: ', '');
+    });
   };
 }
 

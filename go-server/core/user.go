@@ -9,8 +9,8 @@ import (
 )
 
 type User struct {
-	User string `json:"user"`
-	Name string `json:"name"`
+	User     string `json:"user"`
+	Name     string `json:"name"`
 	Password string `json:-`
 }
 
@@ -41,6 +41,20 @@ func Login(c appengine.Context, login, password string) (error, bool, *datastore
 	return nil, true, key
 }
 
+func ChangePassword(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
+	user := User{}
+	err = datastore.Get(c, userKey, &user)
+	if err != nil {
+		return
+	}
+	if user.Password != hash(m["oldPassword"].(string)) {
+		return nil, fmt.Errorf("Wrong old password")
+	}
+	user.Password = hash(m["newPassword"].(string))
+	_, err = datastore.Put(c, userKey, &user)
+	return
+}
+
 func hash(s string) string {
 	return fmt.Sprintf("%x", sha1.New().Sum([]byte(s)))
 }
@@ -49,14 +63,18 @@ func userByLogin(c appengine.Context, login string, init bool) (err error, user 
 	q := datastore.NewQuery("User").Filter("User = ", login)
 	var users []User
 	keys, err := q.GetAll(c, &users)
-	if err != nil { return }
+	if err != nil {
+		return
+	}
 	if len(users) == 0 {
 		if login == "admin" && !init {
 			if err = InitUserManagement(c); err != nil {
 				return
 			}
 			keys, err = q.GetAll(c, &users)
-			if err != nil { return }
+			if err != nil {
+				return
+			}
 		}
 		return
 	}
