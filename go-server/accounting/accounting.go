@@ -6,7 +6,7 @@ import (
 	"appengine"
 	"appengine/datastore"
 	"fmt"
-	"reflect"
+	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"strings"
 	"time"
 )
@@ -212,7 +212,7 @@ func (entry *Entry) ValidationMessage(c appengine.Context, param map[string]stri
 }
 
 func AllChartsOfAccounts(c appengine.Context, _ map[string]string, _ *datastore.Key) (interface{}, error) {
-	return getAll(c, &[]ChartOfAccounts{}, "ChartOfAccounts", "", []string{"Name"})
+	return db.GetAll(c, &[]ChartOfAccounts{}, "ChartOfAccounts", "", []string{"Name"})
 }
 
 func SaveChartOfAccounts(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (interface{}, error) {
@@ -220,16 +220,16 @@ func SaveChartOfAccounts(c appengine.Context, m map[string]interface{}, param ma
 		Name: m["name"].(string),
 		User: userKey,
 		AsOf: time.Now()}
-	_, err := save(c, coa, "ChartOfAccounts", "", param)
+	_, err := db.Save(c, coa, "ChartOfAccounts", "", param)
 	return coa, err
 }
 
 func AllAccounts(c appengine.Context, param map[string]string, _ *datastore.Key) (interface{}, error) {
-	return getAll(c, &[]Account{}, "Account", param["coa"], []string{"Number"})
+	return db.GetAll(c, &[]Account{}, "Account", param["coa"], []string{"Number"})
 }
 
 func GetAccount(c appengine.Context, param map[string]string, _ *datastore.Key) (result interface{}, err error) {
-	return get(c, &Account{}, param["account"])
+	return db.Get(c, &Account{}, param["account"])
 }
 
 func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
@@ -308,7 +308,7 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 
 	err = datastore.RunInTransaction(c, func(c appengine.Context) (err error) {
 
-		accountKey, err := save(c, account, "Account", param["coa"], param)
+		accountKey, err := db.Save(c, account, "Account", param["coa"], param)
 		if err != nil {
 			return
 		}
@@ -347,11 +347,11 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 }
 
 func AllTransactions(c appengine.Context, param map[string]string, _ *datastore.Key) (interface{}, error) {
-	return getAll(c, &[]Transaction{}, "Transaction", param["coa"], []string{"Date", "AsOf"})
+	return db.GetAll(c, &[]Transaction{}, "Transaction", param["coa"], []string{"Date", "AsOf"})
 }
 
 func GetTransaction(c appengine.Context, param map[string]string, _ *datastore.Key) (result interface{}, err error) {
-	return get(c, &Transaction{}, param["transaction"])
+	return db.Get(c, &Transaction{}, param["transaction"])
 }
 
 func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
@@ -403,7 +403,7 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 		}
 	}
 
-	transactionKey, err = save(c, transaction, "Transaction", param["coa"], param)
+	transactionKey, err = db.Save(c, transaction, "Transaction", param["coa"], param)
 	if err != nil {
 		return
 	}
@@ -859,75 +859,6 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 	return
 }
 
-func getAll(c appengine.Context, items interface{}, kind string, ancestor string, orderKeys []string) (interface{}, error) {
-	q := datastore.NewQuery(kind)
-	if len(ancestor) > 0 {
-		ancestorKey, err := datastore.DecodeKey(ancestor)
-		if err != nil {
-			return nil, err
-		}
-		q = q.Ancestor(ancestorKey)
-	}
-	for _, o := range orderKeys {
-		q = q.Order(o)
-	}
-	keys, err := q.GetAll(c, items)
-	v := reflect.ValueOf(items).Elem()
-	for i := 0; i < v.Len(); i++ {
-		v.Index(i).FieldByName("Key").Set(reflect.ValueOf(keys[i]))
-	}
-	return items, err
-}
-
-func get(c appengine.Context, item interface{}, keyAsString string) (result interface{}, err error) {
-	key, err := datastore.DecodeKey(keyAsString)
-	if err != nil {
-		return
-	}
-	err = datastore.Get(c, key, item)
-	if err != nil {
-		return
-	}
-	v := reflect.ValueOf(item).Elem()
-	v.FieldByName("Key").Set(reflect.ValueOf(key))
-	result = item
-	return
-}
-
-func save(c appengine.Context, item interface{}, kind string, ancestor string, param map[string]string) (key *datastore.Key, err error) {
-	vm := item.(ValidationMessager).ValidationMessage(c, param)
-	if len(vm) > 0 {
-		return nil, fmt.Errorf(vm)
-	}
-
-	var ancestorKey *datastore.Key
-	if len(ancestor) > 0 {
-		ancestorKey, err = datastore.DecodeKey(ancestor)
-		if err != nil {
-			return
-		}
-	}
-
-	v := reflect.ValueOf(item).Elem()
-
-	if !v.FieldByName("Key").IsNil() {
-		key = v.FieldByName("Key").Interface().(*datastore.Key)
-	} else {
-		key = datastore.NewIncompleteKey(c, kind, ancestorKey)
-	}
-
-	key, err = datastore.Put(c, key, item)
-	if err != nil {
-		return
-	}
-
-	if key != nil {
-		v.FieldByName("Key").Set(reflect.ValueOf(key))
-	}
-
-	return
-}
-
 func contains(s []string, e string) bool {
 	return indexOf(s, e) != -1
 }
@@ -939,8 +870,4 @@ func indexOf(s []string, e string) int {
 		}
 	}
 	return -1
-}
-
-type ValidationMessager interface {
-	ValidationMessage(appengine.Context, map[string]string) string
 }

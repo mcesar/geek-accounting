@@ -46,6 +46,11 @@ func init() {
 		return nil
 	}))
 	r.HandleFunc("/password", postHandler(core.ChangePassword)).Methods("PUT")
+	r.HandleFunc("/users", getAllHandler(core.AllUsers)).Methods("GET")
+	r.HandleFunc("/users/{user}", getAllHandler(core.GetUser)).Methods("GET")
+	r.HandleFunc("/users", postHandler(core.SaveUser)).Methods("POST")
+	r.HandleFunc("/users/{user}", postHandler(core.SaveUser)).Methods("PUT")
+	r.HandleFunc("/users/{user}", deleteHandler(core.DeleteUser)).Methods("DELETE")
 	http.Handle("/", r)
 }
 

@@ -53,12 +53,16 @@
               <li ng-class="{active: routeIs('accounts$')}">
                 <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/accounts">Plano de Contas</a>
               </li>
-              <li class="dropdown" ng-class="{active: routeIs('transaction$|transactions\/[^\/]+$|account$|accounts\/[^\/]+$|password$')}">
+              <li ng-class="{active: routeIs('users$')}">
+                <a href="#/users">Usuários</a>
+              </li>
+              <li class="dropdown" ng-class="{active: routeIs('transaction$|transactions\/[^\/]+$|account$|accounts\/[^\/]+$|password$|user$|users\/[^\/]+$')}">
                 <a href="" class="dropdown-toggle" data-toggle="dropdown">Ações {{actionLabel()}}<b class="caret"></b></a>
                 <ul class="dropdown-menu">
                   <li><a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/transaction">Lançamento</a></li>
                   <li><a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/account">Nova conta</a></li>
                   <li><a href="#/password">Alterar senha</a></li>
+                  <li><a href="#/user">Novo usuário</a></li>
                 </ul>
               </li>
             </ul>

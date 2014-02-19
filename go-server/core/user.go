@@ -6,12 +6,25 @@ import (
 	//"log"
 	"appengine"
 	"appengine/datastore"
+	"github.com/mcesarhm/geek-accounting/go-server/db"
+	"strings"
 )
 
 type User struct {
-	User     string `json:"user"`
-	Name     string `json:"name"`
-	Password string `json:-`
+	Key      *datastore.Key `datastore:"-" json:"_id"`
+	User     string         `json:"user"`
+	Name     string         `json:"name"`
+	Password string         `json:"-"`
+}
+
+func (u *User) ValidationMessage(_ appengine.Context, m map[string]string) string {
+	if len(strings.TrimSpace(u.User)) == 0 {
+		return "The login must be informed"
+	}
+	if len(strings.TrimSpace(u.Name)) == 0 {
+		return "The name must be informed"
+	}
+	return ""
 }
 
 func InitUserManagement(c appengine.Context) (err error) {
@@ -21,7 +34,7 @@ func InitUserManagement(c appengine.Context) (err error) {
 		return
 	}
 	if user == nil {
-		key := datastore.NewIncompleteKey(c, "User", nil)
+		key := datastore.NewIncompleteKey(c, "User", realm(c))
 		_, err = datastore.Put(c, key, &User{User: "admin", Password: hash("admin")})
 		if err != nil {
 			return
@@ -41,7 +54,7 @@ func Login(c appengine.Context, login, password string) (error, bool, *datastore
 	return nil, true, key
 }
 
-func ChangePassword(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
+func ChangePassword(c appengine.Context, m map[string]interface{}, _ map[string]string, userKey *datastore.Key) (item interface{}, err error) {
 	user := User{}
 	err = datastore.Get(c, userKey, &user)
 	if err != nil {
@@ -55,12 +68,68 @@ func ChangePassword(c appengine.Context, m map[string]interface{}, param map[str
 	return
 }
 
+func AllUsers(c appengine.Context, _ map[string]string, _ *datastore.Key) (interface{}, error) {
+	return db.GetAll(c, &[]User{}, "User", realm(c).Encode(), []string{"User"})
+}
+
+func GetUser(c appengine.Context, param map[string]string, _ *datastore.Key) (interface{}, error) {
+	return db.Get(c, &User{}, param["user"])
+}
+
+func SaveUser(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
+
+	user := &User{
+		User: m["user"].(string),
+		Name: m["name"].(string),
+	}
+
+	if userKeyAsString, ok := param["user"]; ok {
+		user.Key, err = datastore.DecodeKey(userKeyAsString)
+		if err != nil {
+			return
+		}
+		if password, ok := m["password"]; !ok || len(password.(string)) == 0 {
+			var u User
+			err = datastore.Get(c, user.Key, &u)
+			if err != nil {
+				return
+			}
+			user.Password = u.Password
+		} else {
+			user.Password = hash(password.(string))
+		}
+	} else {
+		user.Password = hash(m["password"].(string))
+	}
+
+	if user.Key, err = db.Save(c, user, "User", realm(c).Encode(), param); err != nil {
+		return
+	}
+
+	item = user
+
+	return
+}
+
+func DeleteUser(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (_ interface{}, err error) {
+
+	key, err := datastore.DecodeKey(param["user"])
+	if err != nil {
+		return
+	}
+
+	err = datastore.Delete(c, key)
+
+	return
+
+}
+
 func hash(s string) string {
 	return fmt.Sprintf("%x", sha1.New().Sum([]byte(s)))
 }
 
 func userByLogin(c appengine.Context, login string, init bool) (err error, user *User, key *datastore.Key) {
-	q := datastore.NewQuery("User").Filter("User = ", login)
+	q := datastore.NewQuery("User").Ancestor(realm(c)).Filter("User = ", login)
 	var users []User
 	keys, err := q.GetAll(c, &users)
 	if err != nil {
@@ -81,4 +150,8 @@ func userByLogin(c appengine.Context, login string, init bool) (err error, user 
 	user = &users[0]
 	key = keys[0]
 	return
+}
+
+func realm(c appengine.Context) *datastore.Key {
+	return datastore.NewKey(c, "User", "default", 0, nil)
 }

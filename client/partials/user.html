@@ -1,0 +1,29 @@
+<form class="form-horizontal" role="form">
+  <div ng-show="errorMessage">
+		<div class="alert alert-danger">
+			{{errorMessage}}
+		</div>
+  </div>
+  <div class="form-group">
+  	<label class="col-sm-2 text-right" for="user">Login</label>
+  	<div class="col-sm-2">
+  		<input type="text" class="form-control" id="user" autofocus ng-model="user" ng-change="errorMessage=undefined">
+  	</div>
+  </div>
+  <div class="form-group">
+  	<label class="col-sm-2 text-right" for="name">Nome</label>
+  	<div class="col-sm-2">
+  		<input type="text" class="form-control" id="name" ng-model="name" ng-change="errorMessage=undefined">
+  	</div>
+  </div>
+  <div class="form-group">
+  	<label class="col-sm-2 text-right" for="password">Senha</label>
+  	<div class="col-sm-2">
+  		<input type="password" class="form-control" id="password" ng-model="password" ng-change="errorMessage=undefined">
+  	</div>
+  </div>
+  <div class="col-sm-offset-2">
+  	<button class="btn btn-default" ng-click="save()">Salvar</button>
+    <button class="btn btn-danger" ng-click="remove()" ng-show="userId()">Excluir</button>
+  </div>
+</form>

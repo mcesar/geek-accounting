@@ -31,3 +31,8 @@ indexes:
   properties:
   - name: Date
   - name: AsOf
+
+- kind: User
+  ancestor: yes
+  properties:
+  - name: User

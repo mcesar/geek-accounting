@@ -15,7 +15,16 @@ angular.module('ga.service', ['ngRoute','ngResource'])
     updateTransaction: {method:'PUT', params:{}, url:'/charts-of-accounts/:coa/transactions/:transaction'},
     removeTransaction: {method:'DELETE', params:{}, url:'/charts-of-accounts/:coa/transactions/:transaction'},
     removeAccount: {method:'DELETE', params:{}, url:'/charts-of-accounts/:coa/accounts/:account'},
+  });
+})
+.factory('UserServer', function ($resource){
+  return $resource('/users', {}, {
     password: {method:'PUT', params:{}, url:'/password'},
+    users: {method:'GET', params:{}, isArray:true},
+    user: {method:'GET', params:{}, url:'/users/:user'},
+    addUser: {method:'POST', params:{}},
+    updateUser: {method:'PUT', params:{}, url:'/users/:user'},
+    removeUser: {method:'DELETE', params:{}, url:'/users/:user'},
   });
 });
 
@@ -61,6 +70,18 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
     .when('/password', {
       controller:'PasswordCtrl',
       templateUrl:'partials/password.html'
+    })
+    .when('/users', {
+      controller:'UserCtrl',
+      templateUrl:'partials/users.html'
+    })
+    .when('/users/:user', {
+      controller:'UserCtrl',
+      templateUrl:'partials/user.html'
+    })
+    .when('/user', {
+      controller:'UserCtrl',
+      templateUrl:'partials/user.html'
     })
     .when('/login', {
       controller:'LoginCtrl',
@@ -177,6 +198,8 @@ var NavigatorCtrl = function ($scope, $rootScope, $location, $http, $cacheFactor
       return ': edição de conta';
     } else if ($scope.routeIs('password$')) {
       return ': alteração de senha';
+    } else if ($scope.routeIs('users\/[^\/]+$')) {
+      return ': edição de usuário';
     } else {
       return '';
     }
@@ -506,20 +529,62 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
   };
 }
 
-var PasswordCtrl = function ($scope, $window, $http, $timeout, GaServer) {
+var PasswordCtrl = function ($scope, $window, $http, $timeout, UserServer) {
   $scope.change = function () {
     if ($scope.newPassword != $scope.newPasswordRetyped) {
       $scope.errorMessage = "A senha nova é diferente de sua confirmação";
     }
-    GaServer.password({oldPassword: $scope.oldPassword, newPassword: $scope.newPassword}, function () {
+    UserServer.password({oldPassword: $scope.oldPassword, newPassword: $scope.newPassword}, function () {
       var user = atob($http.defaults.headers.common['Authorization'].substring(6)).split(':')[0];
       $http.defaults.headers.common['Authorization'] = 'Basic ' + btoa(user + ':' + $scope.newPassword);
-      $timeout(function () {
-        $window.history.back();
-      }, 100);
+      $window.history.back();
     }, function (response) {
       $scope.errorMessage = response.data.replace('Error: ', '');
     });
+  };
+}
+
+var UserCtrl = function ($scope, $window, $routeParams, $http, UserServer) {
+  var user;
+  if ($routeParams.user) {
+    user = UserServer.user({user: $routeParams.user}, function () {
+      $scope.user = user.user;
+      $scope.name = user.name;
+    });
+  } else {
+    $scope.users = UserServer.users();
+  }
+  $scope.save = function () {
+    user = {user: $scope.user, name: $scope.name, password: $scope.password};
+    var showError = function (response) {
+      $scope.errorMessage = response.data.replace('Error: ', '');
+    };
+    if ($routeParams.user) {
+      UserServer.updateUser({user: $routeParams.user}, user, function () {
+        if (!!$scope.password && $scope.password.length > 0) {
+          var user = atob($http.defaults.headers.common['Authorization'].substring(6)).split(':')[0];
+          if (user.toLowerCase() === $scope.user.toLowerCase()) {
+            $http.defaults.headers.common['Authorization'] = 'Basic ' + btoa(user + ':' + $scope.password);
+          }
+        }
+        $window.history.back();
+      }, showError);
+    } else {
+      UserServer.addUser({}, user, function () {
+        $scope.user = undefined;
+        $scope.name = undefined;
+        $scope.password = undefined;
+        $scope.errorMessage = undefined;
+      }, showError);
+    }
+  };
+  $scope.remove = function () {
+    UserServer.removeUser({user: $routeParams.user}, function () {
+      $window.history.back();
+    });
+  };
+  $scope.userId = function () {
+    return $routeParams.user;
   };
 }
 

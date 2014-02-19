@@ -1,0 +1,14 @@
+<table class="table table-striped">
+	<thead>
+		<tr>
+			<th><strong>Login</strong></th>
+			<th><strong>Nome</strong></th>
+		</tr>
+	</thead>
+	<tbody>
+		<tr ng-repeat="u in users">
+			<td><a href="#/users/{{u._id}}">{{u.user}}</a></td>
+			<td><a href="#/users/{{u._id}}">{{u.name}}</a></td>
+		</tr>
+	</tbody>
+</table>
