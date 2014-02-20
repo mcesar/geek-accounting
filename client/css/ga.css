@@ -10,3 +10,9 @@
     float: none;
     margin: 0 auto;
 }
+
+.loader {
+	position: fixed;
+	width: 100%;
+	z-index: 1000;
+}
