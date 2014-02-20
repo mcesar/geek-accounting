@@ -424,19 +424,19 @@ var JournalCtrl = function ($scope, $routeParams, GaServer) {
   }
 };
 
-var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
+var TransactionCtrl = function ($scope, $rootScope, $routeParams, $window, GaServer) {
   var t
   var save = function (callback) {
     if ($scope.transaction.debits.length < 1 || $scope.transaction.credits.length < 1) {
-      $scope.broadcast("error_message", "Devem ser informados pelo menos um débito e pelo menos um crédito");
+      $rootScope.$broadcast("error_message", "Devem ser informados pelo menos um débito e pelo menos um crédito");
       return;
     }
     if (!$scope.date) {
-      $scope.broadcast("error_message", "A data deve ser informada");
+      $rootScope.$broadcast("error_message", "A data deve ser informada");
       return;
     }
     if (!$scope.transaction.memo) {
-      $scope.broadcast("error_message", "O memorando deve ser informado");
+      $rootScope.$broadcast("error_message", "O memorando deve ser informado");
       return;
     }
     $scope.transaction.date = $scope.date + 'T00:00:00Z';
@@ -499,12 +499,12 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
   $scope.addEntry = function () {
     var entry;
     if (!$scope.account) {
-      $scope.broadcast("error_message", "A conta deve ser informada");
+      $rootScope.$broadcast("error_message", "A conta deve ser informada");
       return;
     }
     if (!$scope.debit && !$scope.credit) {
       if ($scope.debitsSum() === $scope.creditsSum()) {
-        $scope.broadcast("error_message", "Ou o débito ou o crédito deve ser informado");
+        $scope.$broadcast("error_message", "Ou o débito ou o crédito deve ser informado");
         return;
       } else if ($scope.debitsSum() > $scope.creditsSum()) {
         $scope.credit = $scope.debitsSum() - $scope.creditsSum();
@@ -569,10 +569,10 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
   };
 }
 
-var PasswordCtrl = function ($scope, $window, $http, $timeout, UserServer) {
+var PasswordCtrl = function ($scope, $rootScope, $window, $http, $timeout, UserServer) {
   $scope.change = function () {
     if ($scope.newPassword != $scope.newPasswordRetyped) {
-      $scope.broadcast("error_message", "A senha nova é diferente de sua confirmação");
+      $rootScope.$broadcast("error_message", "A senha nova é diferente de sua confirmação");
     }
     UserServer.password({oldPassword: $scope.oldPassword, newPassword: $scope.newPassword}, function () {
       var user = atob($http.defaults.headers.common['Authorization'].substring(6)).split(':')[0];
