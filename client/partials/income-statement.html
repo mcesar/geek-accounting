@@ -1,17 +1,29 @@
-<ul class="list-unstyled">
-<li ng-repeat="p in properties">
-  <div class="col-xs-12 col-md-10 col-lg-8 col-md-offset-1 col-lg-offset-2">
-	<strong>{{p.label}}</strong>: 
-	<div class="pull-right table-cell-padding-right">{{p.prop.balance | number:2}}</div>
-	<table class="table table-striped">
-		<tr ng-repeat="d in p.prop.details">
-			<td>{{d.account.number}}</td>
-			<td>{{d.account.name}}</td>
-			<td class="text-right">
-				<a href="#/charts-of-accounts/{{currentChartOfAccounts()}}/accounts/{{d.account._id}}/ledger">{{d.value | number:2}}</a>
-			</td>
-		</tr>
-	</table>
-  </div>
-</li>
-</ul>
+<div class="row text-center">
+	<h5 ng-click="editRange=true" ng-show="!editRange">{{range()}}</h5>
+	<form class="form-inline" role="form" ng-show="editRange">
+	  <div class="form-group">
+			<input type="date" ng-model="from">
+			<input type="date" ng-model="to">
+		</div>
+		<button type="button" class="close" style="float: none;" aria-hidden="true" ng-click="editRange=false">&times;</button>
+	</form>
+</div>
+<div class="row">
+	<ul class="list-unstyled">
+	<li ng-repeat="p in properties">
+	  <div class="col-xs-12 col-md-10 col-lg-8 col-md-offset-1 col-lg-offset-2">
+		<strong>{{p.label}}</strong>: 
+		<div class="pull-right table-cell-padding-right">{{p.prop.balance | number:2}}</div>
+		<table class="table table-striped">
+			<tr ng-repeat="d in p.prop.details">
+				<td>{{d.account.number}}</td>
+				<td>{{d.account.name}}</td>
+				<td class="text-right">
+					<a href="#/charts-of-accounts/{{currentChartOfAccounts()}}/accounts/{{d.account._id}}/ledger">{{d.value | number:2}}</a>
+				</td>
+			</tr>
+		</table>
+	  </div>
+	</li>
+	</ul>
+</div>

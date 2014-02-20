@@ -345,10 +345,19 @@ var AccountsCtrl = function ($scope, $routeParams, $cacheFactory, $window, GaSer
   }
 };
 
-var BsCtrl = function ($scope, $routeParams, GaServer) {
-  var s = new Date().toJSON();
-  s = s.substring(0, s.indexOf('T'));
-  $scope.balanceSheet = GaServer.balanceSheet({coa: $routeParams.coa, at: s});
+var BsCtrl = function ($scope, $routeParams, $rootScope, $location, GaServer) {
+  if (!!$location.search().at) {
+    $scope.at = $location.search().at
+  } else {
+    if (!!$rootScope.lastBalanceSheetAt) {
+      $scope.at = $rootScope.lastBalanceSheetAt;
+    } else {
+      $scope.at = new Date().toJSON();
+      $scope.at = $scope.at.substring(0, $scope.at.indexOf('T'));
+    }
+  }
+  $rootScope.lastBalanceSheetAt = $scope.at;
+  $scope.balanceSheet = GaServer.balanceSheet({coa: $routeParams.coa, at: $scope.at});
   $scope.isDebitBalance = function (e) {
     return e && e.account && 
       (e.account.debitBalance && e.account.name.indexOf('(-)') === -1) ||
@@ -360,9 +369,13 @@ var BsCtrl = function ($scope, $routeParams, GaServer) {
   $scope.currentChartOfAccounts = function () {
     return $routeParams.coa;
   }
+  $scope.$watch('at', function (newValue, oldValue) {
+    if (newValue != oldValue && !!$scope.editDate)
+    $location.search({at: $scope.at});
+  });
 };
 
-var IsCtrl = function ($scope, $routeParams, GaServer) {
+var IsCtrl = function ($scope, $rootScope, $routeParams, $location, $filter, GaServer) {
   var label = {
     'grossRevenue': 'Gross revenue',
     'deduction': 'Gross revenue',
@@ -380,12 +393,24 @@ var IsCtrl = function ($scope, $routeParams, GaServer) {
     'dividends': 'Dividends',
     'netIncome': 'Net income'
   };
-  var t = new Date().toJSON(), f;
-  t = t.substring(0, t.indexOf('T'));
-  f = t.substring(0, 8) + '01'
+  if (!!$location.search().from && !!$location.search().to) {
+    $scope.from = $location.search().from
+    $scope.to = $location.search().to
+  } else {
+    if (!!$rootScope.lastIncomeStatementFrom) {
+      $scope.from = $rootScope.lastIncomeStatementFrom;
+      $scope.to = $rootScope.lastIncomeStatementTo;
+    } else {
+      $scope.to = new Date().toJSON();
+      $scope.to = $scope.to.substring(0, $scope.to.indexOf('T'));
+      $scope.from = $scope.to.substring(0, 8) + '01'
+    }
+  }
+  $rootScope.lastIncomeStatementFrom = $scope.from;
+  $rootScope.lastIncomeStatementTo = $scope.to;
   $scope.properties = [];
   $scope.incomeStatement = GaServer.incomeStatement(
-    {coa: $routeParams.coa, from: f, to: t}, 
+    {coa: $routeParams.coa, from: $scope.from, to: $scope.to}, 
     function () {
       var result = [];
       for(var p in $scope.incomeStatement) { 
@@ -401,13 +426,30 @@ var IsCtrl = function ($scope, $routeParams, GaServer) {
   $scope.currentChartOfAccounts = function () {
     return $routeParams.coa;
   }
+  $scope.range = function () {
+    var result = '';
+    if (!!$scope.from && !!$scope.to) {
+      if ($scope.from.substring(0, 4) !== $scope.to.substring(0, 4)) {
+        result = $filter('date')($scope.from, 'shortDate') + ' a ' + $filter('date')($scope.to, 'shortDate');
+      } else if ($scope.from.substring(5, 7) !== $scope.to.substring(5, 7)) {
+        result = $filter('date')($scope.from, 'dd/MM') + ' a ' + $filter('date')($scope.to, 'shortDate');
+      } else {
+        result = $filter('date')($scope.from, 'dd') + ' a ' + $filter('date')($scope.to, 'shortDate');
+      }
+    }
+    return result;
+  };
+  $scope.$watch('from+to', function (newValue, oldValue) {
+    if (newValue != oldValue && !!$scope.editRange)
+    $location.search({from: $scope.from, to: $scope.to});
+  });
 };
 
 var LedgerCtrl = function ($scope, $routeParams, GaServer) {
   var t = new Date().toJSON(), f;
   t = t.substring(0, t.indexOf('T'));
   f = t.substring(0, 8) + '01'
-  $scope.ledger = GaServer.ledger({coa: $routeParams.coa, account: $routeParams.account, from: f, to: t});
+  $scope.ledger = GaServer.ledger({coa: $routeParams.coa, account: $routeParams.account, from: $scope.from, to: $scope.to});
   $scope.convertToUTC = convertToUTC;
   $scope.currentChartOfAccounts = function () {
     return $routeParams.coa;
