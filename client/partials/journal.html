@@ -1,24 +1,36 @@
-<ul class="list-unstyled">
-	<li ng-repeat="e in journal">
-		<strong>{{convertToUTC(e.date) | date:'shortDate'}}</strong>
-		<table class="table">
-			<tbody>
-				<tr ng-repeat="d in e.debits">
-					<td>&nbsp;</td>
-					<td>{{d.account.number}}</td>
-					<td>{{d.account.name}}</td>
-					<td class="text-right">{{d.value | number:2}}</td>
-					<td>&nbsp;</td>
-				</tr>
-				<tr ng-repeat="c in e.credits">
-					<td><span ng-show="$first">a</span>&nbsp;</td>
-					<td>{{c.account.number}}</td>
-					<td>{{c.account.name}}</td>
-					<td>&nbsp;</td>
-					<td class="text-right">{{c.value | number:2}}</td>
-				</tr>
-			</tbody>
-		</table>
-		<div><a href="#/charts-of-accounts/{{currentChartOfAccounts()}}/transactions/{{e._id}}">{{e.memo}}</a><br><br></div>
-	</li>
-</ul>
+<div class="row text-center">
+	<h5 ng-click="editRange=true" ng-show="!editRange">{{range()}}</h5>
+	<form class="form-inline" role="form" ng-show="editRange">
+	  <div class="form-group">
+			<input type="date" ng-model="from">
+			<input type="date" ng-model="to">
+		</div>
+		<button type="button" class="close" style="float: none;" aria-hidden="true" ng-click="editRange=false">&times;</button>
+	</form>
+</div>
+<div class="row">
+	<ul class="list-unstyled">
+		<li ng-repeat="e in journal">
+			<strong>{{convertToUTC(e.date) | date:'shortDate'}}</strong>
+			<table class="table">
+				<tbody>
+					<tr ng-repeat="d in e.debits">
+						<td>&nbsp;</td>
+						<td>{{d.account.number}}</td>
+						<td>{{d.account.name}}</td>
+						<td class="text-right">{{d.value | number:2}}</td>
+						<td>&nbsp;</td>
+					</tr>
+					<tr ng-repeat="c in e.credits">
+						<td><span ng-show="$first">a</span>&nbsp;</td>
+						<td>{{c.account.number}}</td>
+						<td>{{c.account.name}}</td>
+						<td>&nbsp;</td>
+						<td class="text-right">{{c.value | number:2}}</td>
+					</tr>
+				</tbody>
+			</table>
+			<div><a href="#/charts-of-accounts/{{currentChartOfAccounts()}}/transactions/{{e._id}}">{{e.memo}}</a><br><br></div>
+		</li>
+	</ul>
+</div>

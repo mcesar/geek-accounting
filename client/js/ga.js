@@ -393,21 +393,7 @@ var IsCtrl = function ($scope, $rootScope, $routeParams, $location, $filter, GaS
     'dividends': 'Dividends',
     'netIncome': 'Net income'
   };
-  if (!!$location.search().from && !!$location.search().to) {
-    $scope.from = $location.search().from
-    $scope.to = $location.search().to
-  } else {
-    if (!!$rootScope.lastIncomeStatementFrom) {
-      $scope.from = $rootScope.lastIncomeStatementFrom;
-      $scope.to = $rootScope.lastIncomeStatementTo;
-    } else {
-      $scope.to = new Date().toJSON();
-      $scope.to = $scope.to.substring(0, $scope.to.indexOf('T'));
-      $scope.from = $scope.to.substring(0, 8) + '01'
-    }
-  }
-  $rootScope.lastIncomeStatementFrom = $scope.from;
-  $rootScope.lastIncomeStatementTo = $scope.to;
+  fillRange($scope, $rootScope, $location, 'IncomeStatement');
   $scope.properties = [];
   $scope.incomeStatement = GaServer.incomeStatement(
     {coa: $routeParams.coa, from: $scope.from, to: $scope.to}, 
@@ -427,17 +413,7 @@ var IsCtrl = function ($scope, $rootScope, $routeParams, $location, $filter, GaS
     return $routeParams.coa;
   }
   $scope.range = function () {
-    var result = '';
-    if (!!$scope.from && !!$scope.to) {
-      if ($scope.from.substring(0, 4) !== $scope.to.substring(0, 4)) {
-        result = $filter('date')($scope.from, 'shortDate') + ' a ' + $filter('date')($scope.to, 'shortDate');
-      } else if ($scope.from.substring(5, 7) !== $scope.to.substring(5, 7)) {
-        result = $filter('date')($scope.from, 'dd/MM') + ' a ' + $filter('date')($scope.to, 'shortDate');
-      } else {
-        result = $filter('date')($scope.from, 'dd') + ' a ' + $filter('date')($scope.to, 'shortDate');
-      }
-    }
-    return result;
+    return range($scope.from, $scope.to, $filter);
   };
   $scope.$watch('from+to', function (newValue, oldValue) {
     if (newValue != oldValue && !!$scope.editRange)
@@ -456,14 +432,20 @@ var LedgerCtrl = function ($scope, $routeParams, GaServer) {
   }
 };
 
-var JournalCtrl = function ($scope, $routeParams, GaServer) {
-  var t = new Date().toJSON();
-  t = t.substring(0, t.indexOf('T'));
-  $scope.journal = GaServer.journal({coa: $routeParams.coa, from: t, to: t});
+var JournalCtrl = function ($scope, $rootScope, $routeParams, $location, $filter, GaServer) {
+  fillRange($scope, $rootScope, $location, 'Journal', true);
+  $scope.journal = GaServer.journal({coa: $routeParams.coa, from: $scope.from, to: $scope.to});
   $scope.convertToUTC = convertToUTC;
   $scope.currentChartOfAccounts = function () {
     return $routeParams.coa;
   }
+  $scope.range = function () {
+    return range($scope.from, $scope.to, $filter);
+  };
+  $scope.$watch('from+to', function (newValue, oldValue) {
+    if (newValue != oldValue && !!$scope.editRange)
+    $location.search({from: $scope.from, to: $scope.to});
+  });
 };
 
 var TransactionCtrl = function ($scope, $rootScope, $routeParams, $window, GaServer) {
@@ -670,3 +652,35 @@ function convertToUTC (dt) {
   var localOffset = localDate.getTimezoneOffset() * 60000;
   return new Date(localTime + localOffset);
 }
+
+function fillRange(scope, rootScope, location, statement, fromEqualsToByDefault) {
+  if (!!location.search().from && !!location.search().to) {
+    scope.from = location.search().from
+    scope.to = location.search().to
+  } else {
+    if (!!rootScope['last' + statement + 'From']) {
+      scope.from = rootScope['last' + statement + 'From'];
+      scope.to = rootScope['last' + statement + 'To'];
+    } else {
+      scope.to = new Date().toJSON();
+      scope.to = scope.to.substring(0, scope.to.indexOf('T'));
+      scope.from = !!fromEqualsToByDefault ? scope.to : scope.to.substring(0, 8) + '01'
+    }
+  }
+  rootScope['last' + statement + 'From'] = scope.from;
+  rootScope['last' + statement + 'To'] = scope.to;
+}
+
+function range (from, to, filter) {
+    var result = '';
+    if (!!from && !!to) {
+      if (from.substring(0, 4) !== to.substring(0, 4)) {
+        result = filter('date')(from, 'shortDate') + ' a ' + filter('date')(to, 'shortDate');
+      } else if (from.substring(5, 7) !== to.substring(5, 7)) {
+        result = filter('date')(from, 'dd/MM') + ' a ' + filter('date')(to, 'shortDate');
+      } else {
+        result = filter('date')(from, 'dd') + ' a ' + filter('date')(to, 'shortDate');
+      }
+    }
+    return result;
+  }
