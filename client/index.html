@@ -21,57 +21,63 @@
     </div>
 
     <div class="container-fluid">
-
-      <!-- Static navbar -->
-      <div class="navbar navbar-default" role="navigation" ng-controller="NavigatorCtrl" ng-show="isLoggedIn()">
-        <div class="container-fluid">
-          <div class="navbar-header">
-            <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
-              <span class="sr-only">Toggle navigation</span>
-              <span class="icon-bar"></span>
-              <span class="icon-bar"></span>
-              <span class="icon-bar"></span>
-            </button>
-            <a class="navbar-brand" href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/balance-sheet">Contabilidade</a>
+      <div ng-controller="NavigatorCtrl" ng-show="isLoggedIn()">
+        <!-- Static navbar -->
+        <div class="navbar navbar-default" role="navigation">
+          <div class="container-fluid">
+            <div class="navbar-header">
+              <button type="button" class="navbar-toggle" data-toggle="collapse" data-target=".navbar-collapse">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+              </button>
+              <a class="navbar-brand" href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/balance-sheet">Contabilidade</a>
+            </div>
+            <div class="navbar-collapse collapse">
+              <ul class="nav navbar-nav">
+                <li>
+                  <form class="navbar-form navbar-left" role="search">
+                    <select class="form-control" ng-model="currentChartOfAccounts" ng-options="coa.name for coa in chartsOfAccounts track by coa._id">
+                    </select>
+                  </form>
+                </li>
+                <li ng-class="{active: routeIs('balance-sheet$')}">
+                  <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/balance-sheet">Balanço</a>
+                </li>
+                <li ng-class="{active: routeIs('income-statement$')}">
+                  <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/income-statement">DRE</a>
+                </li>
+                <li ng-class="{active: routeIs('ledger$')}" ng-if="routeIs(['ledger'])">
+                  <a href="">Razão</a>
+                </li>
+                <li ng-class="{active: routeIs('journal$')}">
+                  <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/journal">Diário</a>
+                </li>
+                <li ng-class="{active: routeIs('accounts$')}">
+                  <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/accounts">Plano de Contas</a>
+                </li>
+                <li ng-class="{active: routeIs('users$')}">
+                  <a href="#/users">Usuários</a>
+                </li>
+                <li class="dropdown" ng-class="{active: routeIs('transaction$|transactions\/[^\/]+$|account$|accounts\/[^\/]+$|password$|user$|users\/[^\/]+$')}">
+                  <a href="" class="dropdown-toggle" data-toggle="dropdown">Ações {{actionLabel()}}<b class="caret"></b></a>
+                  <ul class="dropdown-menu">
+                    <li><a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/transaction">Lançamento</a></li>
+                    <li><a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/account">Nova conta</a></li>
+                    <li><a href="#/password">Alterar senha</a></li>
+                    <li><a href="#/user">Novo usuário</a></li>
+                  </ul>
+                </li>
+              </ul>
+            </div><!--/.nav-collapse -->
+          </div><!--/.container-fluid -->
+        </div>
+        <div ng-show="errorMessage">
+          <div class="alert alert-danger">
+            {{errorMessage}}
           </div>
-          <div class="navbar-collapse collapse">
-            <ul class="nav navbar-nav">
-              <li>
-                <form class="navbar-form navbar-left" role="search">
-                  <select class="form-control" ng-model="currentChartOfAccounts" ng-options="coa.name for coa in chartsOfAccounts track by coa._id">
-                  </select>
-                </form>
-              </li>
-              <li ng-class="{active: routeIs('balance-sheet$')}">
-                <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/balance-sheet">Balanço</a>
-              </li>
-              <li ng-class="{active: routeIs('income-statement$')}">
-                <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/income-statement">DRE</a>
-              </li>
-              <li ng-class="{active: routeIs('ledger$')}" ng-if="routeIs(['ledger'])">
-                <a href="">Razão</a>
-              </li>
-              <li ng-class="{active: routeIs('journal$')}">
-                <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/journal">Diário</a>
-              </li>
-              <li ng-class="{active: routeIs('accounts$')}">
-                <a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/accounts">Plano de Contas</a>
-              </li>
-              <li ng-class="{active: routeIs('users$')}">
-                <a href="#/users">Usuários</a>
-              </li>
-              <li class="dropdown" ng-class="{active: routeIs('transaction$|transactions\/[^\/]+$|account$|accounts\/[^\/]+$|password$|user$|users\/[^\/]+$')}">
-                <a href="" class="dropdown-toggle" data-toggle="dropdown">Ações {{actionLabel()}}<b class="caret"></b></a>
-                <ul class="dropdown-menu">
-                  <li><a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/transaction">Lançamento</a></li>
-                  <li><a href="#/charts-of-accounts/{{currentChartOfAccounts._id}}/account">Nova conta</a></li>
-                  <li><a href="#/password">Alterar senha</a></li>
-                  <li><a href="#/user">Novo usuário</a></li>
-                </ul>
-              </li>
-            </ul>
-          </div><!--/.nav-collapse -->
-        </div><!--/.container-fluid -->
+        </div>
       </div>
 
       <div ng-view></div>

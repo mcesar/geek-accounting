@@ -33,22 +33,21 @@ angular.module('ga.service', ['ngRoute','ngResource'])
 
   return {
     request: function (config) {
+      $rootScope.$broadcast("http_request", config);
       numLoadings++;
-      // Show loader
       $rootScope.$broadcast("loader_show");
       return config || $q.when(config)
 
     },
     response: function (response) {
       if ((--numLoadings) === 0) {
-        // Hide loader
         $rootScope.$broadcast("loader_hide");
       }
       return response || $q.when(response);
     },
     responseError: function (response) {
+      $rootScope.$broadcast("http_error", response);
       if (!(--numLoadings)) {
-        // Hide loader
         $rootScope.$broadcast("loader_hide");
       }
       return $q.reject(response);
@@ -282,6 +281,15 @@ var NavigatorCtrl = function ($scope, $rootScope, $location, $http, $cacheFactor
     $location.path(arr.join('/'));
     $cacheFactory.get('accounts').removeAll();
   });
+  $scope.$on("http_request", function (event, config) {
+    $scope.errorMessage = undefined;
+  });
+  $scope.$on("http_error", function (event, response) {
+    $rootScope.$broadcast("error_message", (response.data || '').replace('Error: ', ''));
+  });
+  $scope.$on("error_message", function (event, message) {
+    $scope.errorMessage = message;
+  });
 };
 
 var AccountsCtrl = function ($scope, $routeParams, $cacheFactory, $window, GaServer) {
@@ -290,9 +298,6 @@ var AccountsCtrl = function ($scope, $routeParams, $cacheFactory, $window, GaSer
   $scope.accounts = GaServer.accounts({coa: $routeParams.coa});
   $scope.save = function () {
     var tags = ($scope.tags || '').split(','), i;
-    var showError = function (response) {
-      $scope.errorMessage = response.data.replace('Error: ', '');
-    };
     for (i = 0; i < tags.length; i += 1) {
       $scope.account[tags[i]] = true;
     }
@@ -300,14 +305,13 @@ var AccountsCtrl = function ($scope, $routeParams, $cacheFactory, $window, GaSer
       GaServer.updateAccount({coa: $routeParams.coa, account: $routeParams.account}, $scope.account, function () {
         $cacheFactory.get('accounts').removeAll();
         $window.history.back();
-      }, showError);
+      });
     } else {
       GaServer.addAccount({coa: $routeParams.coa}, $scope.account, function () {
         $cacheFactory.get('accounts').removeAll();
         $scope.account = {};
         $scope.tags = undefined;
-        $scope.errorMessage = undefined;
-      }, showError);
+      });
     }
   };
   $scope.remove = function () {
@@ -424,29 +428,25 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
   var t
   var save = function (callback) {
     if ($scope.transaction.debits.length < 1 || $scope.transaction.credits.length < 1) {
-      $scope.errorMessage = "Devem ser informados pelo menos um débito e pelo menos um crédito";
+      $scope.broadcast("error_message", "Devem ser informados pelo menos um débito e pelo menos um crédito");
       return;
     }
     if (!$scope.date) {
-      $scope.errorMessage = "A data deve ser informada";
+      $scope.broadcast("error_message", "A data deve ser informada");
       return;
     }
     if (!$scope.transaction.memo) {
-      $scope.errorMessage = "O memorando deve ser informado";
+      $scope.broadcast("error_message", "O memorando deve ser informado");
       return;
     }
     $scope.transaction.date = $scope.date + 'T00:00:00Z';
     if ($routeParams.transaction) {
       GaServer.updateTransaction({coa: $routeParams.coa, transaction: $routeParams.transaction}, $scope.transaction, function () {
         if (callback) callback();
-      }, function (response) {
-        $scope.errorMessage = response.data.replace('Error: ', '');
       });
     } else {
       GaServer.addTransaction({coa: $routeParams.coa}, $scope.transaction, function () {
         if (callback) callback();
-      }, function (response) {
-        $scope.errorMessage = response.data.replace('Error: ', '');
       });
     }
   };
@@ -499,12 +499,12 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
   $scope.addEntry = function () {
     var entry;
     if (!$scope.account) {
-      $scope.errorMessage = "A conta deve ser informada";
+      $scope.broadcast("error_message", "A conta deve ser informada");
       return;
     }
     if (!$scope.debit && !$scope.credit) {
       if ($scope.debitsSum() === $scope.creditsSum()) {
-        $scope.errorMessage = "Ou o débito ou o crédito deve ser informado";
+        $scope.broadcast("error_message", "Ou o débito ou o crédito deve ser informado");
         return;
       } else if ($scope.debitsSum() > $scope.creditsSum()) {
         $scope.credit = $scope.debitsSum() - $scope.creditsSum();
@@ -530,7 +530,6 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
     });
     $scope.entries.push(entry);
     $scope.account = $scope.debit = $scope.credit = undefined;
-    $scope.errorMessage = undefined;
   };
   $scope.removeEntry = function (index) {
     function removeOnTransaction (col) {
@@ -573,14 +572,12 @@ var TransactionCtrl = function ($scope, $routeParams, $window, GaServer) {
 var PasswordCtrl = function ($scope, $window, $http, $timeout, UserServer) {
   $scope.change = function () {
     if ($scope.newPassword != $scope.newPasswordRetyped) {
-      $scope.errorMessage = "A senha nova é diferente de sua confirmação";
+      $scope.broadcast("error_message", "A senha nova é diferente de sua confirmação");
     }
     UserServer.password({oldPassword: $scope.oldPassword, newPassword: $scope.newPassword}, function () {
       var user = atob($http.defaults.headers.common['Authorization'].substring(6)).split(':')[0];
       $http.defaults.headers.common['Authorization'] = 'Basic ' + btoa(user + ':' + $scope.newPassword);
       $window.history.back();
-    }, function (response) {
-      $scope.errorMessage = response.data.replace('Error: ', '');
     });
   };
 }
@@ -597,9 +594,6 @@ var UserCtrl = function ($scope, $window, $routeParams, $http, UserServer) {
   }
   $scope.save = function () {
     user = {user: $scope.user, name: $scope.name, password: $scope.password};
-    var showError = function (response) {
-      $scope.errorMessage = response.data.replace('Error: ', '');
-    };
     if ($routeParams.user) {
       UserServer.updateUser({user: $routeParams.user}, user, function () {
         if (!!$scope.password && $scope.password.length > 0) {
@@ -609,14 +603,13 @@ var UserCtrl = function ($scope, $window, $routeParams, $http, UserServer) {
           }
         }
         $window.history.back();
-      }, showError);
+      });
     } else {
       UserServer.addUser({}, user, function () {
         $scope.user = undefined;
         $scope.name = undefined;
         $scope.password = undefined;
-        $scope.errorMessage = undefined;
-      }, showError);
+      });
     }
   };
   $scope.remove = function () {
