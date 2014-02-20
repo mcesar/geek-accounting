@@ -19,7 +19,7 @@
 				<td>{{d.account.number}}</td>
 				<td>{{d.account.name}}</td>
 				<td class="text-right">
-					<a href="#/charts-of-accounts/{{currentChartOfAccounts()}}/accounts/{{d.account._id}}/ledger">{{d.value | number:2}}</a>
+					<a href="#/charts-of-accounts/{{currentChartOfAccounts()}}/accounts/{{d.account._id}}/ledger?from={{from}}&to={{to}}">{{d.value | number:2}}</a>
 				</td>
 			</tr>
 		</table>

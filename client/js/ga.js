@@ -362,17 +362,23 @@ var BsCtrl = function ($scope, $routeParams, $rootScope, $location, GaServer) {
     return e && e.account && 
       (e.account.debitBalance && e.account.name.indexOf('(-)') === -1) ||
       (e.account.creditBalance && e.account.name.indexOf('(-)') !== -1);
-  }
+  };
   $scope.isCreditBalance = function (e) {
     return !$scope.isDebitBalance(e);
-  }
+  };
   $scope.currentChartOfAccounts = function () {
     return $routeParams.coa;
-  }
+  };
   $scope.$watch('at', function (newValue, oldValue) {
     if (newValue != oldValue && !!$scope.editDate)
     $location.search({at: $scope.at});
   });
+  $scope.from = function () {
+    return $scope.at.substring(0, 8) + '01';
+  };
+  $scope.to = function () {
+    return $scope.at;
+  };
 };
 
 var IsCtrl = function ($scope, $rootScope, $routeParams, $location, $filter, GaServer) {
@@ -421,15 +427,16 @@ var IsCtrl = function ($scope, $rootScope, $routeParams, $location, $filter, GaS
   });
 };
 
-var LedgerCtrl = function ($scope, $routeParams, GaServer) {
-  var t = new Date().toJSON(), f;
-  t = t.substring(0, t.indexOf('T'));
-  f = t.substring(0, 8) + '01'
+var LedgerCtrl = function ($scope, $rootScope, $routeParams, $location, $filter, GaServer) {
+  fillRange($scope, $rootScope, $location, 'Ledger');
   $scope.ledger = GaServer.ledger({coa: $routeParams.coa, account: $routeParams.account, from: $scope.from, to: $scope.to});
   $scope.convertToUTC = convertToUTC;
   $scope.currentChartOfAccounts = function () {
     return $routeParams.coa;
   }
+  $scope.range = function () {
+    return range($scope.from, $scope.to, $filter);
+  };
 };
 
 var JournalCtrl = function ($scope, $rootScope, $routeParams, $location, $filter, GaServer) {
@@ -664,7 +671,7 @@ function fillRange(scope, rootScope, location, statement, fromEqualsToByDefault)
     } else {
       scope.to = new Date().toJSON();
       scope.to = scope.to.substring(0, scope.to.indexOf('T'));
-      scope.from = !!fromEqualsToByDefault ? scope.to : scope.to.substring(0, 8) + '01'
+      scope.from = !!fromEqualsToByDefault ? scope.to : scope.to.substring(0, 8) + '01';
     }
   }
   rootScope['last' + statement + 'From'] = scope.from;
