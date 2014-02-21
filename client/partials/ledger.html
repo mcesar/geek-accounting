@@ -30,6 +30,14 @@
 					<td class="text-right">{{e.balance | number:2}}</td>
 				</tr>
 			</tbody>
+			<tfoot>
+				<tr>
+					<td colspan="4">&nbsp;</td>
+					<td class="text-right">{{debitsSum() | number:2}}</td>
+					<td class="text-right">{{creditsSum() | number:2}}</td>
+					<td>&nbsp;</td>
+				</tr>
+			</tfoot>
 		</table>
 	</div>
 </div>

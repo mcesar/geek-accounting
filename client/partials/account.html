@@ -17,12 +17,43 @@
   		<input type="text" class="form-control" id="parent" ng-model="account.parent" account-typeahead>
   	</div>
   </div>
-  <div class="form-group">
-  	<label class="col-sm-2 text-right" for="tags">Tags:</label>
-  	<div class="col-sm-6">
-  		<input type="text" class="form-control" id="tags" ng-model="tags">
-  	</div>
-  </div>
+  <fieldset class="col-sm-offset-2">
+    <legend>Classificação</legend>
+    <div class="radio">
+      <label>
+        <input type="radio" name="financialStatement" id="balanceSheet" value="balanceSheet" ng-model="financialStatement">
+        Patrimonial
+      </label>
+    </div>    
+    <div class="radio">
+      <label>
+        <input type="radio" name="financialStatement" id="incomeStatement" value="incomeStatement" ng-model="financialStatement">
+        De Resultado
+      </label>
+    </div>
+    <div class="form-group">
+      <br>
+      <select class="form-control col-sm-offset-1 width-auto" ng-model="incomeStatementAttribute" ng-disabled="financialStatement!='incomeStatement'" ng-options="a.name for a in incomeStatementAttributes track by a.value">
+      </select>
+    </div>
+    <br>
+  </fieldset>
+  <fieldset class="col-sm-offset-2">
+    <legend>Natureza do saldo</legend>
+    <div class="radio">
+      <label>
+        <input type="radio" name="balanceNature" id="debitBalance" value="debitBalance" ng-model="balanceNature">
+        Devedora
+      </label>
+    </div>    
+    <div class="radio">
+      <label>
+        <input type="radio" name="balanceNature" id="creditBalance" value="creditBalance" ng-model="balanceNature">
+        Credora
+      </label>
+    </div>
+    <br>
+  </fieldset>
   <div class="col-sm-offset-2">
   	<button class="btn btn-default" ng-click="save()">Salvar</button>
     <button class="btn btn-danger" ng-click="remove()" ng-show="accountId()">Excluir</button>

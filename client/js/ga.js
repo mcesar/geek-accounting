@@ -297,9 +297,11 @@ var AccountsCtrl = function ($scope, $routeParams, $cacheFactory, $window, GaSer
   $scope.account = {};
   $scope.accounts = GaServer.accounts({coa: $routeParams.coa});
   $scope.save = function () {
-    var tags = ($scope.tags || '').split(','), i;
-    for (i = 0; i < tags.length; i += 1) {
-      $scope.account[tags[i]] = true;
+    $scope.account[$scope.financialStatement] = true;
+    $scope.account[$scope.balanceNature] = true;
+    $scope.account[$scope.detailDegree] = true;
+    if (!!$scope.incomeStatementAttribute) { 
+      $scope.account[$scope.incomeStatementAttribute.value] = true; 
     }
     if ($routeParams.account) {
       GaServer.updateAccount({coa: $routeParams.coa, account: $routeParams.account}, $scope.account, function () {
@@ -310,7 +312,6 @@ var AccountsCtrl = function ($scope, $routeParams, $cacheFactory, $window, GaSer
       GaServer.addAccount({coa: $routeParams.coa}, $scope.account, function () {
         $cacheFactory.get('accounts').removeAll();
         $scope.account = {};
-        $scope.tags = undefined;
       });
     }
   };
@@ -327,12 +328,36 @@ var AccountsCtrl = function ($scope, $routeParams, $cacheFactory, $window, GaSer
   $scope.accountId = function () {
     return $routeParams.account;
   };
+  $scope.incomeStatementAttributes = [
+    {},
+    {name: 'Operacional', value: 'operating'},
+    {name: 'Deduções', value: 'deduction'},
+    {name: 'Tributos sobre faturamento', value: 'salesTax'},
+    {name: 'Custo', value: 'cost'},
+    {name: 'Tributos não operacionais', value: 'nonOperatingTax'},
+    {name: 'Imposto de Renda', value: 'incomeTax'},
+    {name: 'Dividendos', value: 'dividends'}];
 
   if ($routeParams.account) {
     account = GaServer.account({coa: $routeParams.coa, account: $routeParams.account}, function () {
-      var accounts;
+      var accounts, i, j;
       $scope.account = { _id: account._id, name: account.name, number: account.number };
-      $scope.tags = account.tags.join(',');
+      for (i = 0; i < account.tags.length; i += 1) {
+        if (/Balance$/.test(account.tags[i])) {
+          $scope.balanceNature = account.tags[i];
+        } if (/balanceSheet$|incomeStatement$/.test(account.tags[i])) {
+          $scope.financialStatement = account.tags[i];
+        } if (/analytic$|synthetic$/.test(account.tags[i])) {
+          $scope.detailDegree = account.tags[i];
+        } else {
+          for (j = 0; j < $scope.incomeStatementAttributes.length; j += 1) {
+            if (account.tags[i] === $scope.incomeStatementAttributes[j].value) {
+              $scope.incomeStatementAttribute = $scope.incomeStatementAttributes[j];
+              break;
+            }
+          }
+        }
+      }
       accounts = GaServer.accounts({coa: $routeParams.coa}, function () {
         var i;
         for (i = 0; i < accounts.length; i += 1) {
@@ -436,6 +461,28 @@ var LedgerCtrl = function ($scope, $rootScope, $routeParams, $location, $filter,
   }
   $scope.range = function () {
     return range($scope.from, $scope.to, $filter);
+  };
+  $scope.debitsSum = function () {
+    var result = 0, i = 0;
+    if (!!$scope.ledger.entries) {
+      for (; i < $scope.ledger.entries.length; i += 1) {
+        if (!!$scope.ledger.entries[i].debit) {
+          result += $scope.ledger.entries[i].debit;
+        }
+      }
+    }
+    return result;
+  };
+  $scope.creditsSum = function () {
+    var result = 0, i = 0;
+    if (!!$scope.ledger.entries) {
+      for (; i < $scope.ledger.entries.length; i += 1) {
+        if (!!$scope.ledger.entries[i].credit) {
+          result += $scope.ledger.entries[i].credit;
+        }
+      }
+    }
+    return result;
   };
 };
 

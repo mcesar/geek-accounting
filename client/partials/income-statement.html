@@ -12,17 +12,17 @@
 	<ul class="list-unstyled">
 	<li ng-repeat="p in properties">
 	  <div class="col-xs-12 col-md-10 col-lg-8 col-md-offset-1 col-lg-offset-2">
-		<strong>{{p.label}}</strong>: 
-		<div class="pull-right table-cell-padding-right">{{p.prop.balance | number:2}}</div>
-		<table class="table table-striped">
-			<tr ng-repeat="d in p.prop.details">
-				<td>{{d.account.number}}</td>
-				<td>{{d.account.name}}</td>
-				<td class="text-right">
-					<a href="#/charts-of-accounts/{{currentChartOfAccounts()}}/accounts/{{d.account._id}}/ledger?from={{from}}&to={{to}}">{{d.value | number:2}}</a>
-				</td>
-			</tr>
-		</table>
+			<strong>{{p.label}}</strong>: 
+			<div class="pull-right table-cell-padding-right">{{p.prop.balance | number:2}}</div>
+			<table class="table table-striped">
+				<tr ng-repeat="d in p.prop.details">
+					<td>{{d.account.number}}</td>
+					<td>{{d.account.name}}</td>
+					<td class="text-right">
+						<a href="#/charts-of-accounts/{{currentChartOfAccounts()}}/accounts/{{d.account._id}}/ledger?from={{from}}&to={{to}}">{{d.value | number:2}}</a>
+					</td>
+				</tr>
+			</table>
 	  </div>
 	</li>
 	</ul>
