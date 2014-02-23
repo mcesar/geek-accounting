@@ -36,7 +36,7 @@ func init() {
 	r.HandleFunc(PathPrefix+"/{coa}/journal", getAllHandler(accounting.Journal)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}/ledger", getAllHandler(accounting.Ledger)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/income-statement", getAllHandler(accounting.IncomeStatement)).Methods("GET")
-	r.HandleFunc("/_ah/startup", func(w http.ResponseWriter, r *http.Request) {
+	r.HandleFunc("/_ah/warmup", func(w http.ResponseWriter, r *http.Request) {
 		if err := core.InitUserManagement(appengine.NewContext(r)); err != nil {
 			http.Error(w, "Internal error:"+err.Error(), http.StatusInternalServerError)
 		}
