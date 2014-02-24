@@ -701,10 +701,7 @@ var UserCtrl = function ($scope, $window, $routeParams, $http, UserServer) {
 }
 
 function convertToUTC (dt) {
-  var localDate = new Date(dt);
-  var localTime = localDate.getTime();
-  var localOffset = localDate.getTimezoneOffset() * 60000;
-  return new Date(localTime + localOffset);
+  return dt.toISOString().substring(0, 10) + "T00:00:00"
 }
 
 function fillRange(scope, rootScope, location, statement, fromEqualsToByDefault) {
