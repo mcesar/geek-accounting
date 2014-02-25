@@ -377,7 +377,7 @@ var BsCtrl = function ($scope, $routeParams, $rootScope, $location, GaServer) {
     if (!!$rootScope.lastBalanceSheetAt) {
       $scope.at = $rootScope.lastBalanceSheetAt;
     } else {
-      $scope.at = new Date().toJSON();
+      $scope.at = convertToUTC(new Date());
       $scope.at = $scope.at.substring(0, $scope.at.indexOf('T'));
     }
   }
@@ -532,7 +532,8 @@ var TransactionCtrl = function ($scope, $rootScope, $routeParams, $window, GaSer
     $scope.account = null;
     $scope.transaction = {debits:[], credits:[]};
     $scope.entries = [];
-    $scope.date = new Date().toISOString().substring(0, 10);
+    $scope.date = convertToUTC(new Date());
+    $scope.date = $scope.date.substring(0, $scope.date.indexOf('T'))
   };
   clear();
   $scope.accountFocus = true;
@@ -701,7 +702,9 @@ var UserCtrl = function ($scope, $window, $routeParams, $http, UserServer) {
 }
 
 function convertToUTC (dt) {
-  return dt.toISOString().substring(0, 10) + "T00:00:00"
+  if (typeof dt === 'string')
+    return dt.substring(0, 10) + "T00:00:00.000";
+  return moment(dt).format('YYYY-MM-DD') + "T00:00:00.000";
 }
 
 function fillRange(scope, rootScope, location, statement, fromEqualsToByDefault) {
@@ -713,7 +716,7 @@ function fillRange(scope, rootScope, location, statement, fromEqualsToByDefault)
       scope.from = rootScope['last' + statement + 'From'];
       scope.to = rootScope['last' + statement + 'To'];
     } else {
-      scope.to = new Date().toJSON();
+      scope.to = convertToUTC(new Date());
       scope.to = scope.to.substring(0, scope.to.indexOf('T'));
       scope.from = !!fromEqualsToByDefault ? scope.to : scope.to.substring(0, 8) + '01';
     }
