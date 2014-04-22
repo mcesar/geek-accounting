@@ -271,21 +271,20 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 		}
 		account.Parent = a.Parent
 		account.Number = a.Number
-	} else {
-		if parentNumber, ok := m["parent"]; ok {
-			q := datastore.NewQuery("Account").Ancestor(coaKey).Filter("Number = ", parentNumber)
-			var accounts []Account
-			keys, err := q.GetAll(c, &accounts)
-			if err != nil {
-				return nil, err
-			}
-			if len(keys) == 0 {
-				return nil, fmt.Errorf("Parent not found")
-			}
-			account.Parent = keys[0]
-			parent = &accounts[0]
-			delete(m, "parent")
+	}
+	if parentNumber, ok := m["parent"]; ok {
+		q := datastore.NewQuery("Account").Ancestor(coaKey).Filter("Number = ", parentNumber)
+		var accounts []Account
+		keys, err := q.GetAll(c, &accounts)
+		if err != nil {
+			return nil, err
 		}
+		if len(keys) == 0 {
+			return nil, fmt.Errorf("Parent not found")
+		}
+		account.Parent = keys[0]
+		parent = &accounts[0]
+		delete(m, "parent")
 	}
 
 	var retainedEarningsAccount bool
