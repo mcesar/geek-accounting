@@ -28,6 +28,9 @@ handlers:
 - url: /
   static_files: client/index.html
   upload: client/index.html
+- url: /_ah/remote_api
+  script: _go_app
+  login: admin
 
 inbound_services:
 - warmup
