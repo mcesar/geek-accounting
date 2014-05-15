@@ -14,7 +14,7 @@ import (
 
 	"appengine"
 	"appengine/datastore"
-	_ "appengine/remote_api"
+	//_ "appengine/remote_api"
 )
 
 const PathPrefix = "/charts-of-accounts"
