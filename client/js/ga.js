@@ -577,6 +577,12 @@ var TransactionCtrl = function ($scope, $rootScope, $routeParams, $window, GaSer
   };
   $scope.addEntry = function () {
     var entry;
+    var evalIfExpression = function (value) {
+      if (typeof value === 'number') {
+        return value;
+      }
+      return $scope.$eval(value.replace('.', '').replace(/,/g, '.'));
+    }
     if (!$scope.account) {
       $rootScope.$broadcast("error_message", "A conta deve ser informada");
       return;
@@ -592,9 +598,11 @@ var TransactionCtrl = function ($scope, $rootScope, $routeParams, $window, GaSer
       }
     }
     if ($scope.debit) {
+      $scope.debit = evalIfExpression($scope.debit);
       entry = {e: {account: $scope.account, value: $scope.debit}, debit: $scope.debit};
       $scope.transaction.debits.push(entry.e)
     } else {
+      $scope.credit = evalIfExpression($scope.credit);
       entry = {e: {account: $scope.account, value: $scope.credit}, credit: $scope.credit};
       if ($scope.credit) {
         $scope.transaction.credits.push(entry.e)
