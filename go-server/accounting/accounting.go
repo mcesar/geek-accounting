@@ -5,8 +5,10 @@ import (
 	//"runtime/debug"
 	"appengine"
 	"appengine/datastore"
+	"appengine/memcache"
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
+	"reflect"
 	"strings"
 	"time"
 )
@@ -501,14 +503,12 @@ func Journal(c appengine.Context, m map[string]string, _ *datastore.Key) (result
 		return
 	}
 
-	q := datastore.NewQuery("Account").Ancestor(coaKey).Order("Number")
-	var accounts []*Account
-	accountKeys, err := q.GetAll(c, &accounts)
+	accountKeys, accounts, err := allAccounts(c, coaKey, nil)
 	if err != nil {
 		return
 	}
 
-	q = datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
+	q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
 	var transactions []*Transaction
 	transactionKeys, err := q.GetAll(c, &transactions)
 	if err != nil {
@@ -563,9 +563,8 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 	if err != nil {
 		return
 	}
-	q := datastore.NewQuery("Account").Ancestor(coaKey)
-	var accounts []*Account
-	accountKeys, err := q.GetAll(c, &accounts)
+
+	accountKeys, accounts, err := allAccounts(c, coaKey, nil)
 	if err != nil {
 		return
 	}
@@ -584,7 +583,7 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 		return
 	}
 
-	q = datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date <=", to).Order("Date").Order("AsOf")
+	q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date <=", to).Order("Date").Order("AsOf")
 	var transactions []*Transaction
 	keys, err := q.GetAll(c, &transactions)
 	if err != nil {
@@ -809,17 +808,12 @@ func accountToMap(account *Account) map[string]interface{} {
 
 func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, accountFilters map[string]interface{}) (result []map[string]interface{}, err error) {
 
-	q := datastore.NewQuery("Account").Ancestor(coaKey).Order("Number")
-	for k, v := range accountFilters {
-		q = q.Filter(k, v)
-	}
-	var accounts []*Account
-	accountKeys, err := q.GetAll(c, &accounts)
+	accountKeys, accounts, err := allAccounts(c, coaKey, accountFilters)
 	if err != nil {
 		return
 	}
 
-	q = datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
+	q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
 	var transactions []*Transaction
 	_, err = q.GetAll(c, &transactions)
 	if err != nil {
@@ -869,4 +863,86 @@ func indexOf(s []string, e string) int {
 		}
 	}
 	return -1
+}
+
+func allAccounts(c appengine.Context, coaKey *datastore.Key, accountFilters map[string]interface{}) (accountKeys []*datastore.Key, accounts []*Account, err error) {
+	var arr []interface{}
+	_, err = memcache.Gob.Get(c, "accounts_"+coaKey.Encode(), &arr)
+	if err == memcache.ErrCacheMiss {
+		q := datastore.NewQuery("Account").Ancestor(coaKey).Order("Number")
+		accountKeys, err = q.GetAll(c, &accounts)
+		accountKeysAsString := []string{}
+		for _, k := range accountKeys {
+			accountKeysAsString = append(accountKeysAsString, k.Encode())
+		}
+		item := &memcache.Item{
+			Key:    "accounts_" + coaKey.Encode(),
+			Object: []interface{}{accountKeysAsString, accounts},
+		}
+		if err = memcache.Gob.Set(c, item); err != nil {
+			return nil, nil, err
+		}
+	} else if err != nil {
+		return nil, nil, err
+	} else {
+		accountKeysAsString := arr[0].([]string)
+		accounts = arr[1].([]*Account)
+		accountKeys = []*datastore.Key{}
+		for _, k := range accountKeysAsString {
+			if key, err := datastore.DecodeKey(k); err != nil {
+				return nil, nil, err
+			} else {
+				accountKeys = append(accountKeys, key)
+			}
+		}
+	}
+	if accountFilters != nil {
+		var aa interface{}
+		accountKeys, aa, err = filter(accountKeys, accounts, accountFilters, []*Account{})
+		if err != nil {
+			return nil, nil, err
+		}
+		accounts = aa.([]*Account)
+	}
+
+	return
+}
+
+func filter(keys []*datastore.Key, items interface{}, filters map[string]interface{}, dest interface{}) ([]*datastore.Key, interface{}, error) {
+	resultKeys := []*datastore.Key{}
+	resultItems := reflect.ValueOf(dest)
+	ii := reflect.ValueOf(items)
+	for i := 0; i < ii.Len(); i++ {
+		itemPtr := ii.Index(i)
+		item := itemPtr.Elem()
+		equals := true
+		for k, v := range filters {
+			if !strings.HasSuffix(k, " =") {
+				return nil, nil, fmt.Errorf("Operators other than equal are not allowed")
+			}
+			fn := strings.Replace(k, " =", "", 1)
+			f := item.FieldByName(fn)
+			if f.Kind() == reflect.Slice {
+				found := false
+				for j := 0; j < f.Len(); j++ {
+					if f.Index(j).Interface() == v {
+						found = true
+						break
+					}
+				}
+				if !found {
+					equals = false
+					break
+				}
+			} else if f.Interface() != v {
+				equals = false
+				break
+			}
+		}
+		if equals {
+			resultKeys = append(resultKeys, keys[i])
+			resultItems = reflect.Append(resultItems, itemPtr)
+		}
+	}
+	return resultKeys, resultItems.Interface(), nil
 }

@@ -4,10 +4,15 @@ import (
 	"appengine"
 	"appengine/aetest"
 	"appengine/datastore"
+	"encoding/gob"
 	_ "fmt"
 	"testing"
 	"time"
 )
+
+func init() {
+	gob.Register(([]*Account)(nil))
+}
 
 func TestSaveChartOfAccounts(t *testing.T) {
 	c, err := aetest.NewContext(nil)
@@ -75,7 +80,7 @@ func TestSaveTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
-	
+
 	var coa *ChartOfAccounts
 	if coa, err = saveChartOfAccounts(c); err != nil {
 		t.Fatal(err)
@@ -242,7 +247,7 @@ func saveChartOfAccounts(c appengine.Context) (*ChartOfAccounts, error) {
 }
 
 func saveAccount(c appengine.Context, coa *ChartOfAccounts, number, name string, tags []string) (*Account, error) {
-	m := map[string]interface{}{"number": number,"name": name}
+	m := map[string]interface{}{"number": number, "name": name}
 	for _, t := range tags {
 		m[t] = true
 	}
@@ -256,9 +261,9 @@ func saveAccount(c appengine.Context, coa *ChartOfAccounts, number, name string,
 
 func saveTransaction(c appengine.Context, coa *ChartOfAccounts, a1, a2 string) (*Transaction, error) {
 	if obj, err := SaveTransaction(c, map[string]interface{}{
-		"debits": []interface{}{map[string]interface{}{"account": a1, "value": 1.0}}, 
-		"credits": []interface{}{map[string]interface{}{"account": a2, "value": 1.0}}, 
-		"memo": "test", "date": "2014-05-01T00:00:00Z"}, 
+		"debits":  []interface{}{map[string]interface{}{"account": a1, "value": 1.0}},
+		"credits": []interface{}{map[string]interface{}{"account": a2, "value": 1.0}},
+		"memo":    "test", "date": "2014-05-01T00:00:00Z"},
 		map[string]string{"coa": coa.Key.Encode()}, nil); err != nil {
 		return nil, err
 	} else {

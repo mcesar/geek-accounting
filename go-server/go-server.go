@@ -2,6 +2,7 @@ package server
 
 import (
 	"encoding/base64"
+	"encoding/gob"
 	"encoding/json"
 	//"io/ioutil"
 	"log"
@@ -20,6 +21,7 @@ import (
 const PathPrefix = "/charts-of-accounts"
 
 func init() {
+	gob.Register(([]*accounting.Account)(nil))
 	r := mux.NewRouter()
 	r.HandleFunc(PathPrefix, getAllHandler(accounting.AllChartsOfAccounts)).Methods("GET")
 	r.HandleFunc(PathPrefix, postHandler(accounting.SaveChartOfAccounts)).Methods("POST")
