@@ -343,8 +343,70 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 		return
 	}
 
+	_, err = memcache.Get(c, "accounts_"+coaKey.Encode())
+	if err != nil {
+		if err != memcache.ErrCacheMiss {
+			return
+		}
+		err = nil
+	} else {
+		err = memcache.Delete(c, "accounts_"+coaKey.Encode())
+	}
+
 	item = account
 	return
+}
+
+func DeleteAccount(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (_ interface{}, err error) {
+
+	key, err := datastore.DecodeKey(param["account"])
+	if err != nil {
+		return
+	}
+
+	coaKey, err := datastore.DecodeKey(param["coa"])
+	if err != nil {
+		return
+	}
+
+	checkReferences := func(kind, property, errorMessage string) error {
+		q := datastore.NewQuery(kind).Ancestor(coaKey).Filter(property, key).KeysOnly()
+		var keys []*datastore.Key
+		if keys, err = q.GetAll(c, nil); err != nil {
+			return err
+		}
+		if len(keys) > 0 {
+			return fmt.Errorf(errorMessage)
+		}
+		return nil
+	}
+
+	err = checkReferences("Account", "Parent = ", "Child accounts found")
+	if err != nil {
+		return
+	}
+	err = checkReferences("Transaction", "Debits.Account = ", "Transactions referencing this account was found")
+	if err != nil {
+		return
+	}
+	err = checkReferences("Transaction", "Credits.Account = ", "Transactions referencing this account was found")
+	if err != nil {
+		return
+	}
+
+	err = datastore.Delete(c, key)
+	_, err = memcache.Get(c, "accounts_"+coaKey.Encode())
+	if err != nil {
+		if err != memcache.ErrCacheMiss {
+			return
+		}
+		err = nil
+	} else {
+		err = memcache.Delete(c, "accounts_"+coaKey.Encode())
+	}
+
+	return
+
 }
 
 func AllTransactions(c appengine.Context, param map[string]string, _ *datastore.Key) (interface{}, error) {
@@ -427,49 +489,6 @@ func DeleteTransaction(c appengine.Context, m map[string]interface{}, param map[
 
 }
 
-func DeleteAccount(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (_ interface{}, err error) {
-
-	key, err := datastore.DecodeKey(param["account"])
-	if err != nil {
-		return
-	}
-
-	coaKey, err := datastore.DecodeKey(param["coa"])
-	if err != nil {
-		return
-	}
-
-	checkReferences := func(kind, property, errorMessage string) error {
-		q := datastore.NewQuery(kind).Ancestor(coaKey).Filter(property, key).KeysOnly()
-		var keys []*datastore.Key
-		if keys, err = q.GetAll(c, nil); err != nil {
-			return err
-		}
-		if len(keys) > 0 {
-			return fmt.Errorf(errorMessage)
-		}
-		return nil
-	}
-
-	err = checkReferences("Account", "Parent = ", "Child accounts found")
-	if err != nil {
-		return
-	}
-	err = checkReferences("Transaction", "Debits.Account = ", "Transactions referencing this account was found")
-	if err != nil {
-		return
-	}
-	err = checkReferences("Transaction", "Credits.Account = ", "Transactions referencing this account was found")
-	if err != nil {
-		return
-	}
-
-	err = datastore.Delete(c, key)
-
-	return
-
-}
-
 func Balance(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
 	coaKey, err := datastore.DecodeKey(m["coa"])
 	if err != nil {
@@ -503,7 +522,7 @@ func Journal(c appengine.Context, m map[string]string, _ *datastore.Key) (result
 		return
 	}
 
-	accountKeys, accounts, err := allAccounts(c, coaKey, nil)
+	accountKeys, accounts, err := accounts(c, coaKey, nil)
 	if err != nil {
 		return
 	}
@@ -564,7 +583,7 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 		return
 	}
 
-	accountKeys, accounts, err := allAccounts(c, coaKey, nil)
+	accountKeys, accounts, err := accounts(c, coaKey, nil)
 	if err != nil {
 		return
 	}
@@ -808,7 +827,7 @@ func accountToMap(account *Account) map[string]interface{} {
 
 func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, accountFilters map[string]interface{}) (result []map[string]interface{}, err error) {
 
-	accountKeys, accounts, err := allAccounts(c, coaKey, accountFilters)
+	accountKeys, accounts, err := accounts(c, coaKey, accountFilters)
 	if err != nil {
 		return
 	}
@@ -865,7 +884,7 @@ func indexOf(s []string, e string) int {
 	return -1
 }
 
-func allAccounts(c appengine.Context, coaKey *datastore.Key, accountFilters map[string]interface{}) (accountKeys []*datastore.Key, accounts []*Account, err error) {
+func accounts(c appengine.Context, coaKey *datastore.Key, accountFilters map[string]interface{}) (accountKeys []*datastore.Key, accounts []*Account, err error) {
 	var arr []interface{}
 	_, err = memcache.Gob.Get(c, "accounts_"+coaKey.Encode(), &arr)
 	if err == memcache.ErrCacheMiss {
