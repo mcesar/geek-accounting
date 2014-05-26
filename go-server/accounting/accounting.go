@@ -182,7 +182,7 @@ func (transaction *Transaction) ValidationMessage(c appengine.Context, param map
 	if m, creditsSum = ev(transaction.Credits); len(m) > 0 {
 		return m
 	}
-	if debitsSum != creditsSum {
+	if round(debitsSum*100) != round(creditsSum*100) {
 		return "The sum of debit values must be equals to the sum of credit values"
 	}
 	return ""
@@ -447,7 +447,9 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 				return nil, fmt.Errorf("Account '%v' not found", entry["account"])
 			}
 
-			result = append(result, Entry{Account: keys[0], Value: entry["value"].(float64)})
+			result = append(result, Entry{
+				Account: keys[0],
+				Value:   round(entry["value"].(float64)*100) / 100})
 		}
 		return
 	}
@@ -855,6 +857,7 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 				if item["account"] != nil {
 					account := item["account"].(*Account)
 					item["value"] = item["value"].(float64) + f(account, value)
+					item["value"] = round(item["value"].(float64)*100) / 100
 					accountKey = account.Parent
 				} else {
 					accountKey = nil
@@ -964,4 +967,12 @@ func filter(keys []*datastore.Key, items interface{}, filters map[string]interfa
 		}
 	}
 	return resultKeys, resultItems.Interface(), nil
+}
+
+func round(f float64) float64 {
+	if f < 0 {
+		return float64(int(f - 0.5))
+	} else {
+		return float64(int(f + 0.5))
+	}
 }
