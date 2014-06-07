@@ -2,8 +2,8 @@
 	<h5 ng-click="editRange=true" ng-show="!editRange">{{range()}}</h5>
 	<form class="form-inline" role="form" ng-show="editRange">
 	  <div class="form-group">
-			<input type="date" ng-model="from">
-			<input type="date" ng-model="to">
+			<input type="date" ng-model="dirtyFrom" ga-focus="editRange" ga-enter="from=dirtyFrom;to=dirtyTo;editRange=false">
+			<input type="date" ng-model="dirtyTo" ga-enter="from=dirtyFrom;to=dirtyTo;editRange=false">
 		</div>
 		<button type="button" class="close" style="float: none;" aria-hidden="true" ng-click="editRange=false">&times;</button>
 	</form>

@@ -439,6 +439,8 @@ var IsCtrl = function ($scope, $rootScope, $routeParams, $location, $filter, GaS
   };
   fillRange($scope, $rootScope, $location, 'IncomeStatement');
   $scope.properties = [];
+  $scope.dirtyFrom = $scope.from;
+  $scope.dirtyTo = $scope.to;
   $scope.incomeStatement = GaServer.incomeStatement(
     {coa: $routeParams.coa, from: $scope.from, to: $scope.to}, 
     function () {
