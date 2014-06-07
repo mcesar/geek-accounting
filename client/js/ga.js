@@ -133,12 +133,11 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
 })
 .directive('gaFocus', function () {
   return {
-    scope: { trigger: '=gaFocus' },
+    scope: { trigger: '&gaFocus' },
     link: function(scope, element) {
-      scope.$watch('trigger', function(value) {
+      scope.$watch('trigger()', function(value) {
         if(value === true) { 
           element[0].focus();
-          scope.trigger = false;
         }
       });
     }
@@ -197,6 +196,18 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
       });
 
     }
+  };
+})
+.directive('gaEnter', function () {
+  return function (scope, element, attrs) {
+    element.bind("keydown keypress", function (event) {
+        if(event.which === 13) {
+          scope.$apply(function (){
+              scope.$eval(attrs.gaEnter);
+          });
+          event.preventDefault();
+        }
+    });
   };
 });
 
@@ -381,6 +392,7 @@ var BsCtrl = function ($scope, $routeParams, $rootScope, $location, GaServer) {
       $scope.at = $scope.at.substring(0, $scope.at.indexOf('T'));
     }
   }
+  $scope.dirtyAt = $scope.at;
   $rootScope.lastBalanceSheetAt = $scope.at;
   $scope.balanceSheet = GaServer.balanceSheet({coa: $routeParams.coa, at: $scope.at});
   $scope.isDebitBalance = function (e) {
@@ -395,8 +407,9 @@ var BsCtrl = function ($scope, $routeParams, $rootScope, $location, GaServer) {
     return $routeParams.coa;
   };
   $scope.$watch('at', function (newValue, oldValue) {
-    if (newValue != oldValue && !!$scope.editDate)
-    $location.search({at: $scope.at});
+    if (newValue !== oldValue) {
+      $location.search({at: $scope.at});
+    }
   });
   $scope.from = function () {
     return $scope.at.substring(0, 8) + '01';
