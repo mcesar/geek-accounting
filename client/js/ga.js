@@ -462,7 +462,7 @@ var IsCtrl = function ($scope, $rootScope, $routeParams, $location, $filter, GaS
     return range($scope.from, $scope.to, $filter);
   };
   $scope.$watch('from+to', function (newValue, oldValue) {
-    if (newValue != oldValue && !!$scope.editRange)
+    if (newValue != oldValue)
     $location.search({from: $scope.from, to: $scope.to});
   });
 };
@@ -503,6 +503,8 @@ var LedgerCtrl = function ($scope, $rootScope, $routeParams, $location, $filter,
 
 var JournalCtrl = function ($scope, $rootScope, $routeParams, $location, $filter, GaServer) {
   fillRange($scope, $rootScope, $location, 'Journal', true);
+  $scope.dirtyFrom = $scope.from;
+  $scope.dirtyTo = $scope.to;
   $scope.journal = GaServer.journal({coa: $routeParams.coa, from: $scope.from, to: $scope.to});
   $scope.convertToUTC = convertToUTC;
   $scope.currentChartOfAccounts = function () {
@@ -512,7 +514,7 @@ var JournalCtrl = function ($scope, $rootScope, $routeParams, $location, $filter
     return range($scope.from, $scope.to, $filter);
   };
   $scope.$watch('from+to', function (newValue, oldValue) {
-    if (newValue != oldValue && !!$scope.editRange)
+    if (newValue != oldValue)
     $location.search({from: $scope.from, to: $scope.to});
   });
 };
