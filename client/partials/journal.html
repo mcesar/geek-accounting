@@ -1,8 +1,8 @@
 <div class="row text-center">
-	<h5 ng-click="editRange=true" ng-show="!editRange">{{range()}}</h5>
+	<h5 ng-click="editRange=true;dateFocus=true" ng-show="!editRange">{{range()}}</h5>
 	<form class="form-inline" role="form" ng-show="editRange">
 	  <div class="form-group">
-			<input type="date" ng-model="dirtyFrom" ga-focus="editRange" ga-enter="from=dirtyFrom;to=dirtyTo;editRange=false">
+			<input type="date" ng-model="dirtyFrom" ga-focus="dateFocus" ga-enter="from=dirtyFrom;to=dirtyTo;editRange=false">
 			<input type="date" ng-model="dirtyTo" ga-enter="from=dirtyFrom;to=dirtyTo;editRange=false">
 		</div>
 		<button type="button" class="close" style="float: none;" aria-hidden="true" ng-click="editRange=false">&times;</button>

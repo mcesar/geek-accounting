@@ -131,13 +131,16 @@ angular.module('ga', ['ngRoute','ngResource', 'ga.service'])
       redirectTo:'/'
     });
 })
-.directive('gaFocus', function () {
+.directive('gaFocus', function ($parse) {
   return {
-    scope: { trigger: '&gaFocus' },
-    link: function(scope, element) {
-      scope.$watch('trigger()', function(value) {
+    scope: { trigger: '=gaFocus' },
+    link: function(scope, element, attr) {
+      scope.$watch('trigger', function(value) {
         if(value === true) { 
           element[0].focus();
+          if ($parse(attr.gaFocus).assign) {
+            scope.trigger = false;
+          }
         }
       });
     }

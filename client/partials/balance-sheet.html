@@ -1,8 +1,8 @@
 <div class="row text-center">
-	<h5 ng-click="editDate=true" ng-show="!editDate">Em {{at | date:'shortDate'}}</h5>
+	<h5 ng-click="editDate=true;dateFocus=true" ng-show="!editDate">Em {{at | date:'shortDate'}}</h5>
 	<form class="form-inline" role="form" ng-show="editDate">
 	  <div class="form-group">
-			<input type="date" ng-model="dirtyAt" ga-focus="editDate" ga-enter="at=dirtyAt;editDate=false">
+			<input type="date" ng-model="dirtyAt" ga-focus="dateFocus" ga-enter="at=dirtyAt;editDate=false">
 		</div>
 		<button type="button" class="close" style="float: none;" aria-hidden="true" ng-click="dirtyAt=at;editDate=false">&times;</button>
 	</form>
