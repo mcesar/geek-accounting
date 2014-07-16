@@ -843,7 +843,24 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 	var transactionsAsOf, balancesAsOf time.Time
 
 	_, err = memcache.Gob.Get(c, "transactions_asof_"+coaKey.Encode(), &transactionsAsOf)
-	if err != nil && err != memcache.ErrCacheMiss {
+	if err == memcache.ErrCacheMiss {
+		q := datastore.NewQuery("Transaction").Ancestor(coaKey).Order("-AsOf").Limit(1)
+		var transactions []*Transaction
+		_, err = q.GetAll(c, &transactions)
+		if err != nil {
+			return nil, err
+		}
+		if len(transactions) == 1 {
+			transactionsAsOf = transactions[0].AsOf
+			cacheItem := &memcache.Item{
+				Key:    "transactions_asof_" + coaKey.Encode(),
+				Object: transactionsAsOf,
+			}
+			if err = memcache.Gob.Set(c, cacheItem); err != nil {
+				return nil, err
+			}
+		}
+	} else if err != nil {
 		return
 	}
 	_, err = memcache.Gob.Get(c, "balances_asof_"+coaKey.Encode(), &balancesAsOf)
@@ -915,7 +932,6 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 		if err = memcache.Gob.Set(c, item); err != nil {
 			return nil, err
 		}
-
 	} else if err != nil {
 		return nil, err
 	}

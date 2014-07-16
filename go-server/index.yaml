@@ -29,6 +29,12 @@ indexes:
 - kind: Transaction
   ancestor: yes
   properties:
+  - name: AsOf
+    direction: desc
+
+- kind: Transaction
+  ancestor: yes
+  properties:
   - name: Date
   - name: AsOf
 
