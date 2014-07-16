@@ -419,9 +419,11 @@ func GetTransaction(c appengine.Context, param map[string]string, _ *datastore.K
 
 func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
 
+	asOf := time.Now()
+
 	transaction := &Transaction{
 		Memo: m["memo"].(string),
-		AsOf: time.Now(),
+		AsOf: asOf,
 		User: userKey}
 	transaction.Date, err = time.Parse(time.RFC3339, m["date"].(string))
 	if err != nil {
@@ -472,6 +474,15 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 	if err != nil {
 		return
 	}
+
+	cacheItem := &memcache.Item{
+		Key:    "transactions_asof_" + coaKey.Encode(),
+		Object: asOf,
+	}
+	if err = memcache.Gob.Set(c, cacheItem); err != nil {
+		return nil, err
+	}
+
 	transaction.Key = transactionKey
 	item = transaction
 
@@ -829,49 +840,87 @@ func accountToMap(account *Account) map[string]interface{} {
 
 func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, accountFilters map[string]interface{}) (result []map[string]interface{}, err error) {
 
-	accountKeys, accounts, err := accounts(c, coaKey, accountFilters)
-	if err != nil {
+	var transactionsAsOf, balancesAsOf time.Time
+
+	_, err = memcache.Gob.Get(c, "transactions_asof_"+coaKey.Encode(), &transactionsAsOf)
+	if err != nil && err != memcache.ErrCacheMiss {
+		return
+	}
+	_, err = memcache.Gob.Get(c, "balances_asof_"+coaKey.Encode(), &balancesAsOf)
+	if err != nil && err != memcache.ErrCacheMiss {
 		return
 	}
 
-	q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
-	var transactions []*Transaction
-	_, err = q.GetAll(c, &transactions)
-	if err != nil {
-		return
-	}
+	timespanAsString := from.String() + "_" + to.String()
 
-	resultMap := map[string]map[string]interface{}{}
-	for i, a := range accounts {
-		a.Key = accountKeys[i]
-		item := map[string]interface{}{"account": a, "value": 0.0}
-		result = append(result, item)
-		resultMap[accountKeys[i].String()] = item
-	}
+	_, err = memcache.Gob.Get(c, "balances_"+coaKey.Encode()+"_"+timespanAsString, &result)
 
-	incrementValue := func(entries []Entry, f func(*Account, float64) float64) {
-		for _, e := range entries {
-			accountKey, value := e.Account, e.Value
-			for accountKey != nil {
-				item := resultMap[accountKey.String()]
-				if item["account"] != nil {
-					account := item["account"].(*Account)
-					item["value"] = item["value"].(float64) + f(account, value)
-					item["value"] = round(item["value"].(float64)*100) / 100
-					accountKey = account.Parent
-				} else {
-					accountKey = nil
+	if err == memcache.ErrCacheMiss || (err == nil && transactionsAsOf != balancesAsOf) {
+
+		result = []map[string]interface{}{}
+
+		accountKeys, accounts, err := accounts(c, coaKey, accountFilters)
+		if err != nil {
+			return nil, err
+		}
+
+		q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
+		var transactions []*Transaction
+		_, err = q.GetAll(c, &transactions)
+		if err != nil {
+			return nil, err
+		}
+
+		resultMap := map[string]map[string]interface{}{}
+		for i, a := range accounts {
+			a.Key = accountKeys[i]
+			item := map[string]interface{}{"account": a, "value": 0.0}
+			result = append(result, item)
+			resultMap[accountKeys[i].String()] = item
+		}
+
+		incrementValue := func(entries []Entry, f func(*Account, float64) float64) {
+			for _, e := range entries {
+				accountKey, value := e.Account, e.Value
+				for accountKey != nil {
+					item := resultMap[accountKey.String()]
+					if item["account"] != nil {
+						account := item["account"].(*Account)
+						item["value"] = item["value"].(float64) + f(account, value)
+						item["value"] = round(item["value"].(float64)*100) / 100
+						accountKey = account.Parent
+					} else {
+						accountKey = nil
+					}
 				}
 			}
 		}
+
+		for _, t := range transactions {
+			incrementValue(t.Debits, (*Account).Debit)
+			incrementValue(t.Credits, (*Account).Credit)
+		}
+
+		item := &memcache.Item{
+			Key:    "balances_" + coaKey.Encode() + "_" + timespanAsString,
+			Object: result,
+		}
+		if err = memcache.Gob.Set(c, item); err != nil {
+			return nil, err
+		}
+		item = &memcache.Item{
+			Key:    "balances_asof_" + coaKey.Encode(),
+			Object: transactionsAsOf,
+		}
+		if err = memcache.Gob.Set(c, item); err != nil {
+			return nil, err
+		}
+
+	} else if err != nil {
+		return nil, err
 	}
 
-	for _, t := range transactions {
-		incrementValue(t.Debits, (*Account).Debit)
-		incrementValue(t.Credits, (*Account).Credit)
-	}
-
-	return
+	return result, nil
 }
 
 func contains(s []string, e string) bool {

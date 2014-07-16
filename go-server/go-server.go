@@ -22,6 +22,7 @@ const PathPrefix = "/charts-of-accounts"
 
 func init() {
 	gob.Register(([]*accounting.Account)(nil))
+	gob.Register((*Account)(nil))
 	r := mux.NewRouter()
 	r.HandleFunc(PathPrefix, getAllHandler(accounting.AllChartsOfAccounts)).Methods("GET")
 	r.HandleFunc(PathPrefix, postHandler(accounting.SaveChartOfAccounts)).Methods("POST")

@@ -12,6 +12,7 @@ import (
 
 func init() {
 	gob.Register(([]*Account)(nil))
+	gob.Register((*Account)(nil))
 }
 
 func TestSaveChartOfAccounts(t *testing.T) {
