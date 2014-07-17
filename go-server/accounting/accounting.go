@@ -1,7 +1,7 @@
 package accounting
 
 import (
-	//"log"
+	"log"
 	//"runtime/debug"
 	"appengine"
 	"appengine/datastore"
@@ -499,6 +499,16 @@ func DeleteTransaction(c appengine.Context, m map[string]interface{}, param map[
 	}
 
 	err = datastore.Delete(c, key)
+	if err != nil {
+		return
+	}
+
+	if err = memcache.Delete(c, "transactions_asof_"+key.Parent().Encode()); err != nil {
+		return nil, err
+	}
+	if err = memcache.Delete(c, "balances_asof_"+key.Parent().Encode()); err != nil {
+		return nil, err
+	}
 
 	return
 
@@ -877,14 +887,21 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 
 	timespanAsString := from.String() + "_" + to.String()
 
-	_, err = memcache.Gob.Get(c, "balances_asof_"+coaKey.Encode()+"_"+timespanAsString, &balancesAsOf)
-	if err != nil && err != memcache.ErrCacheMiss {
-		return
+	var balancesAsOfMap map[string]time.Time
+	_, err = memcache.Gob.Get(c, "balances_asof_"+coaKey.Encode(), &balancesAsOfMap)
+	if err != nil {
+		if err != memcache.ErrCacheMiss {
+			return
+		}
+		balancesAsOf = balancesAsOfMap[timespanAsString]
 	}
 
 	_, err = memcache.Gob.Get(c, "balances_"+coaKey.Encode()+"_"+timespanAsString, &result)
 
-	if err == memcache.ErrCacheMiss || (err == nil && transactionsAsOf != balancesAsOf) {
+	if err == memcache.ErrCacheMiss ||
+		(err == nil && (transactionsAsOf != balancesAsOf || balancesAsOf.IsZero())) {
+
+		log.Println("balances_ miss")
 
 		accountKeys, accounts, err := accounts(c, coaKey, accountFilters)
 		if err != nil {
@@ -962,9 +979,13 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 		if err = memcache.Gob.Set(c, item); err != nil {
 			return nil, err
 		}
+		if balancesAsOfMap == nil {
+			balancesAsOfMap = map[string]time.Time{}
+		}
+		balancesAsOfMap[timespanAsString] = transactionsAsOf
 		item = &memcache.Item{
-			Key:    "balances_asof_" + coaKey.Encode() + "_" + timespanAsString,
-			Object: transactionsAsOf,
+			Key:    "balances_asof_" + coaKey.Encode(),
+			Object: balancesAsOfMap,
 		}
 		if err = memcache.Gob.Set(c, item); err != nil {
 			return nil, err

@@ -214,7 +214,8 @@ func TestBalance(t *testing.T) {
 		t.Error("Balance's value must be 1")
 	}
 
-	if _, err = saveTransaction(c, coa, "2", "1"); err != nil {
+	var tx *Transaction
+	if tx, err = saveTransaction(c, coa, "2", "1"); err != nil {
 		t.Fatal(err)
 	}
 	if obj, err = Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, nil); err != nil {
@@ -235,6 +236,28 @@ func TestBalance(t *testing.T) {
 	}
 	if balance[1]["value"] != 0.0 {
 		t.Error("Balance's value must be 0")
+	}
+	if _, err = DeleteTransaction(c, nil, map[string]string{"transaction": tx.Key.Encode()}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if obj, err = Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	balance = obj.([]map[string]interface{})
+	if len(balance) != 2 {
+		t.Error("Balance must have two entries")
+	}
+	if balance[0]["account"].(map[string]interface{})["number"] != a1.Number {
+		t.Error("Balance's entry must have account number")
+	}
+	if balance[1]["account"].(map[string]interface{})["number"] != a2.Number {
+		t.Error("Balance's entry must have account number")
+	}
+	if balance[0]["value"] != 1.0 {
+		t.Error("Balance's value must be 1")
+	}
+	if balance[1]["value"] != 1.0 {
+		t.Error("Balance's value must be 1")
 	}
 }
 
