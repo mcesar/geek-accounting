@@ -897,7 +897,7 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 
 		if transactionsAsOf != balancesAsOf &&
 			!transactionsAsOf.IsZero() && !balancesAsOf.IsZero() {
-			q = q.Filter("AsOf >", balancesAsOf)
+			q = q.Filter("AsOf >", balancesAsOf).Filter("AsOf <=", transactionsAsOf)
 			for _, item := range result {
 				resultMap[item["account"].(*Account).Key.String()] = item
 			}
