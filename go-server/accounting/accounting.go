@@ -863,12 +863,13 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 	} else if err != nil {
 		return
 	}
-	_, err = memcache.Gob.Get(c, "balances_asof_"+coaKey.Encode(), &balancesAsOf)
+
+	timespanAsString := from.String() + "_" + to.String()
+
+	_, err = memcache.Gob.Get(c, "balances_asof_"+coaKey.Encode()+"_"+timespanAsString, &balancesAsOf)
 	if err != nil && err != memcache.ErrCacheMiss {
 		return
 	}
-
-	timespanAsString := from.String() + "_" + to.String()
 
 	_, err = memcache.Gob.Get(c, "balances_"+coaKey.Encode()+"_"+timespanAsString, &result)
 
@@ -926,7 +927,7 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 			return nil, err
 		}
 		item = &memcache.Item{
-			Key:    "balances_asof_" + coaKey.Encode(),
+			Key:    "balances_asof_" + coaKey.Encode() + "_" + timespanAsString,
 			Object: transactionsAsOf,
 		}
 		if err = memcache.Gob.Set(c, item); err != nil {
