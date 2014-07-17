@@ -889,10 +889,9 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 
 	var balancesAsOfMap map[string]time.Time
 	_, err = memcache.Gob.Get(c, "balances_asof_"+coaKey.Encode(), &balancesAsOfMap)
-	if err != nil {
-		if err != memcache.ErrCacheMiss {
-			return
-		}
+	if err != nil && err != memcache.ErrCacheMiss {
+		return
+	} else if err == nil {
 		balancesAsOf = balancesAsOfMap[timespanAsString]
 	}
 
