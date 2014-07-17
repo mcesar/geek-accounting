@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"reflect"
+	"sort"
+	//"strconv"
 	"strings"
 	"time"
 )
@@ -838,6 +840,15 @@ func accountToMap(account *Account) map[string]interface{} {
 	}
 }
 
+type ByDateAndAsOf []*Transaction
+
+func (a ByDateAndAsOf) Len() int      { return len(a) }
+func (a ByDateAndAsOf) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a ByDateAndAsOf) Less(i, j int) bool {
+	return a[i].Date.Before(a[j].Date) ||
+		(a[i].Date.Equal(a[j].Date) && a[i].AsOf.Before(a[j].AsOf))
+}
+
 func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, accountFilters map[string]interface{}) (result []map[string]interface{}, err error) {
 
 	var transactionsAsOf, balancesAsOf time.Time
@@ -875,27 +886,50 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 
 	if err == memcache.ErrCacheMiss || (err == nil && transactionsAsOf != balancesAsOf) {
 
-		result = []map[string]interface{}{}
-
 		accountKeys, accounts, err := accounts(c, coaKey, accountFilters)
 		if err != nil {
 			return nil, err
 		}
 
-		q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
+		resultMap := map[string]map[string]interface{}{}
+
+		q := datastore.NewQuery("Transaction").Ancestor(coaKey)
+
+		if transactionsAsOf != balancesAsOf &&
+			!transactionsAsOf.IsZero() && !balancesAsOf.IsZero() {
+			q = q.Filter("AsOf >", balancesAsOf)
+			for _, item := range result {
+				resultMap[item["account"].(*Account).Key.String()] = item
+			}
+		} else {
+			q = q.Filter("Date >=", from).Filter("Date <=", to)
+			result = []map[string]interface{}{}
+			for i, a := range accounts {
+				a.Key = accountKeys[i]
+				item := map[string]interface{}{"account": a, "value": 0.0}
+				result = append(result, item)
+				resultMap[accountKeys[i].String()] = item
+			}
+		}
+
 		var transactions []*Transaction
 		_, err = q.GetAll(c, &transactions)
 		if err != nil {
 			return nil, err
 		}
 
-		resultMap := map[string]map[string]interface{}{}
-		for i, a := range accounts {
-			a.Key = accountKeys[i]
-			item := map[string]interface{}{"account": a, "value": 0.0}
-			result = append(result, item)
-			resultMap[accountKeys[i].String()] = item
-		}
+		/*
+			if transactionsAsOf != balancesAsOf &&
+				!transactionsAsOf.IsZero() && !balancesAsOf.IsZero() {
+				s := transactionsAsOf.String() + " ---> " + strconv.Itoa(len(transactions))
+				for _, t := range transactions {
+					s = s + "___" + t.AsOf.String()
+				}
+				panic(s)
+			}
+		*/
+
+		sort.Sort(ByDateAndAsOf(transactions))
 
 		incrementValue := func(entries []Entry, f func(*Account, float64) float64) {
 			for _, e := range entries {
@@ -915,8 +949,10 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 		}
 
 		for _, t := range transactions {
-			incrementValue(t.Debits, (*Account).Debit)
-			incrementValue(t.Credits, (*Account).Credit)
+			if !t.Date.Before(from) && !t.Date.After(to) {
+				incrementValue(t.Debits, (*Account).Debit)
+				incrementValue(t.Credits, (*Account).Credit)
+			}
 		}
 
 		item := &memcache.Item{

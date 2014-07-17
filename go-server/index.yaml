@@ -30,7 +30,17 @@ indexes:
   ancestor: yes
   properties:
   - name: AsOf
+
+- kind: Transaction
+  ancestor: yes
+  properties:
+  - name: AsOf
     direction: desc
+
+- kind: Transaction
+  ancestor: yes
+  properties:
+  - name: Date
 
 - kind: Transaction
   ancestor: yes
