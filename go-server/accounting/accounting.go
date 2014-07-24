@@ -465,11 +465,13 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 	}
 
 	var transactionKey *datastore.Key
+	isUpdate := false
 	if _, ok := param["transaction"]; ok {
 		transaction.Key, err = datastore.DecodeKey(param["transaction"])
 		if err != nil {
 			return
 		}
+		isUpdate = true
 	}
 
 	transactionKey, err = db.Save(c, transaction, "Transaction", param["coa"], param)
@@ -477,12 +479,21 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 		return
 	}
 
-	cacheItem := &memcache.Item{
-		Key:    "transactions_asof_" + coaKey.Encode(),
-		Object: asOf,
-	}
-	if err = memcache.Gob.Set(c, cacheItem); err != nil {
-		return nil, err
+	if isUpdate {
+		if err = memcache.Delete(c, "transactions_asof_"+coaKey.Encode()); err != nil {
+			return nil, err
+		}
+		if err = memcache.Delete(c, "balances_asof_"+coaKey.Encode()); err != nil {
+			return nil, err
+		}
+	} else {
+		cacheItem := &memcache.Item{
+			Key:    "transactions_asof_" + coaKey.Encode(),
+			Object: asOf,
+		}
+		if err = memcache.Gob.Set(c, cacheItem); err != nil {
+			return nil, err
+		}
 	}
 
 	transaction.Key = transactionKey
