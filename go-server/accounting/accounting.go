@@ -480,12 +480,13 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 	}
 
 	if isUpdate {
-		if err = memcache.Delete(c, "transactions_asof_"+coaKey.Encode()); err != nil {
+		if err = memcache.Delete(c, "transactions_asof_"+coaKey.Encode()); err != nil && err != memcache.ErrCacheMiss {
 			return nil, err
 		}
-		if err = memcache.Delete(c, "balances_asof_"+coaKey.Encode()); err != nil {
+		if err = memcache.Delete(c, "balances_asof_"+coaKey.Encode()); err != nil && err != memcache.ErrCacheMiss {
 			return nil, err
 		}
+		err = nil
 	} else {
 		cacheItem := &memcache.Item{
 			Key:    "transactions_asof_" + coaKey.Encode(),
@@ -514,12 +515,13 @@ func DeleteTransaction(c appengine.Context, m map[string]interface{}, param map[
 		return
 	}
 
-	if err = memcache.Delete(c, "transactions_asof_"+key.Parent().Encode()); err != nil {
+	if err = memcache.Delete(c, "transactions_asof_"+key.Parent().Encode()); err != nil && err != memcache.ErrCacheMiss {
 		return nil, err
 	}
-	if err = memcache.Delete(c, "balances_asof_"+key.Parent().Encode()); err != nil {
+	if err = memcache.Delete(c, "balances_asof_"+key.Parent().Encode()); err != nil && err != memcache.ErrCacheMiss {
 		return nil, err
 	}
+	err = nil
 
 	return
 

@@ -4,6 +4,7 @@ import (
 	"appengine"
 	"appengine/aetest"
 	"appengine/datastore"
+	"appengine/memcache"
 	"encoding/gob"
 	_ "fmt"
 	"testing"
@@ -95,7 +96,7 @@ func TestSaveTransaction(t *testing.T) {
 	}
 
 	var tx *Transaction
-	if tx, err = saveTransaction(c, coa, "1", "2"); err != nil {
+	if tx, err = saveTransaction(c, coa, "1", "2", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -137,7 +138,7 @@ func TestJournal(t *testing.T) {
 		t.Fatal(err)
 	}
 	var tx1, tx2 *Transaction
-	if tx1, err = saveTransaction(c, coa, "1", "2"); err != nil {
+	if tx1, err = saveTransaction(c, coa, "1", "2", ""); err != nil {
 		t.Fatal(err)
 	}
 
@@ -153,7 +154,7 @@ func TestJournal(t *testing.T) {
 		t.Error("Journal's entry must encode transaction's key")
 	}
 
-	if tx2, err = saveTransaction(c, coa, "2", "1"); err != nil {
+	if tx2, err = saveTransaction(c, coa, "2", "1", ""); err != nil {
 		t.Fatal(err)
 	}
 	if obj, err = Journal(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-01"}, nil); err != nil {
@@ -190,7 +191,7 @@ func TestBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err = saveTransaction(c, coa, "1", "2"); err != nil {
+	if _, err = saveTransaction(c, coa, "1", "2", ""); err != nil {
 		t.Fatal(err)
 	}
 	var obj interface{}
@@ -215,7 +216,54 @@ func TestBalance(t *testing.T) {
 	}
 
 	var tx *Transaction
-	if tx, err = saveTransaction(c, coa, "2", "1"); err != nil {
+	if tx, err = saveTransaction(c, coa, "2", "1", ""); err != nil {
+		t.Fatal(err)
+	}
+	if obj, err = Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	balance = obj.([]map[string]interface{})
+	if len(balance) != 2 {
+		t.Error("Balance must have two entries")
+	}
+	if balance[0]["account"].(map[string]interface{})["number"] != a1.Number {
+		t.Error("Balance's entry must have account number")
+	}
+	if balance[1]["account"].(map[string]interface{})["number"] != a2.Number {
+		t.Error("Balance's entry must have account number")
+	}
+	if balance[0]["value"] != 0.0 {
+		t.Error("Balance's value must be 0")
+	}
+	if balance[1]["value"] != 0.0 {
+		t.Error("Balance's value must be 0")
+	}
+	if tx, err = saveTransaction(c, coa, "1", "2", tx.Key.Encode()); err != nil {
+		t.Fatal(err)
+	}
+	if obj, err = Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	balance = obj.([]map[string]interface{})
+	if len(balance) != 2 {
+		t.Error("Balance must have two entries")
+	}
+	if balance[0]["account"].(map[string]interface{})["number"] != a1.Number {
+		t.Error("Balance's entry must have account number")
+	}
+	if balance[1]["account"].(map[string]interface{})["number"] != a2.Number {
+		t.Error("Balance's entry must have account number")
+	}
+	if balance[0]["value"] != 2.0 {
+		t.Error("Balance's value must be 2")
+	}
+	if balance[1]["value"] != 2.0 {
+		t.Error("Balance's value must be 2")
+	}
+	if err = memcache.Flush(c); err != nil {
+		t.Fatal(err)
+	}
+	if tx, err = saveTransaction(c, coa, "2", "1", tx.Key.Encode()); err != nil {
 		t.Fatal(err)
 	}
 	if obj, err = Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, nil); err != nil {
@@ -283,12 +331,16 @@ func saveAccount(c appengine.Context, coa *ChartOfAccounts, number, name string,
 	return nil, nil
 }
 
-func saveTransaction(c appengine.Context, coa *ChartOfAccounts, a1, a2 string) (*Transaction, error) {
-	if obj, err := SaveTransaction(c, map[string]interface{}{
+func saveTransaction(c appengine.Context, coa *ChartOfAccounts, a1, a2, tx string) (*Transaction, error) {
+	txMap := map[string]interface{}{
 		"debits":  []interface{}{map[string]interface{}{"account": a1, "value": 1.0}},
 		"credits": []interface{}{map[string]interface{}{"account": a2, "value": 1.0}},
-		"memo":    "test", "date": "2014-05-01T00:00:00Z"},
-		map[string]string{"coa": coa.Key.Encode()}, nil); err != nil {
+		"memo":    "test", "date": "2014-05-01T00:00:00Z"}
+	param := map[string]string{"coa": coa.Key.Encode()}
+	if len(tx) > 0 {
+		param["transaction"] = tx
+	}
+	if obj, err := SaveTransaction(c, txMap, param, nil); err != nil {
 		return nil, err
 	} else {
 		return obj.(*Transaction), nil
