@@ -170,6 +170,13 @@ func TestJournal(t *testing.T) {
 	if journal[1]["_id"].(*datastore.Key).Encode() != tx2.Key.Encode() {
 		t.Error("Journal's entry must encode transaction's key")
 	}
+	if obj, err = Journal(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-02", "to": "2014-05-02"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	journal = obj.([]map[string]interface{})
+	if len(journal) != 0 {
+		t.Error("Journal must have no entries")
+	}
 }
 
 func TestBalance(t *testing.T) {

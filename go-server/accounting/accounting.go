@@ -8,7 +8,7 @@ import (
 	"appengine/memcache"
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
-	"reflect"
+	"github.com/mcesarhm/geek-accounting/go-server/util"
 	"sort"
 	//"strconv"
 	"strings"
@@ -66,16 +66,16 @@ func (account *Account) ValidationMessage(c appengine.Context, param map[string]
 	if len(strings.TrimSpace(account.Name)) == 0 {
 		return "The name must be informed"
 	}
-	if !contains(account.Tags, "balanceSheet") && !contains(account.Tags, "incomeStatement") {
+	if !util.Contains(account.Tags, "balanceSheet") && !util.Contains(account.Tags, "incomeStatement") {
 		return "The financial statement must be informed"
 	}
-	if contains(account.Tags, "balanceSheet") && contains(account.Tags, "incomeStatement") {
+	if util.Contains(account.Tags, "balanceSheet") && util.Contains(account.Tags, "incomeStatement") {
 		return "The statement must be either balance sheet or income statement"
 	}
-	if !contains(account.Tags, "debitBalance") && !contains(account.Tags, "creditBalance") {
+	if !util.Contains(account.Tags, "debitBalance") && !util.Contains(account.Tags, "creditBalance") {
 		return "The normal balance must be informed"
 	}
-	if contains(account.Tags, "debitBalance") && contains(account.Tags, "creditBalance") {
+	if util.Contains(account.Tags, "debitBalance") && util.Contains(account.Tags, "creditBalance") {
 		return "The normal balance must be either debit or credit"
 	}
 	count := 0
@@ -110,7 +110,7 @@ func (account *Account) ValidationMessage(c appengine.Context, param map[string]
 			return "The number must start with parent's number"
 		}
 		for key, value := range inheritedProperties {
-			if contains(parent.Tags, key) && !contains(account.Tags, key) {
+			if util.Contains(parent.Tags, key) && !util.Contains(account.Tags, key) {
 				return "The " + value + " must be same as the parent"
 			}
 		}
@@ -122,7 +122,7 @@ func (account *Account) ValidationMessage(c appengine.Context, param map[string]
 }
 
 func (account *Account) Debit(value float64) float64 {
-	if contains(account.Tags, "debitBalance") {
+	if util.Contains(account.Tags, "debitBalance") {
 		return value
 	} else {
 		return -value
@@ -130,7 +130,7 @@ func (account *Account) Debit(value float64) float64 {
 }
 
 func (account *Account) Credit(value float64) float64 {
-	if contains(account.Tags, "creditBalance") {
+	if util.Contains(account.Tags, "creditBalance") {
 		return value
 	} else {
 		return -value
@@ -184,7 +184,7 @@ func (transaction *Transaction) ValidationMessage(c appengine.Context, param map
 	if m, creditsSum = ev(transaction.Credits); len(m) > 0 {
 		return m
 	}
-	if round(debitsSum*100) != round(creditsSum*100) {
+	if util.Round(debitsSum*100) != util.Round(creditsSum*100) {
 		return "The sum of debit values must be equals to the sum of credit values"
 	}
 	return ""
@@ -201,7 +201,7 @@ func (entry *Entry) ValidationMessage(c appengine.Context, param map[string]stri
 	if account == nil {
 		return "Account not found"
 	}
-	if !contains(account.Tags, "analytic") {
+	if !util.Contains(account.Tags, "analytic") {
 		return "The account must be analytic"
 	}
 	coaKey, err := datastore.DecodeKey(param["coa"])
@@ -296,7 +296,7 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 		if k != "name" && k != "number" && k != "number" {
 			if k == "retainedEarnings" {
 				retainedEarningsAccount = true
-			} else if !contains(account.Tags, k) {
+			} else if !util.Contains(account.Tags, k) {
 				_, ok1 := inheritedProperties[k]
 				_, ok2 := nonInheritedProperties[k]
 				if ok1 || ok2 {
@@ -305,7 +305,7 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 			}
 		}
 	}
-	if !contains(account.Tags, "analytic") && !isUpdate {
+	if !util.Contains(account.Tags, "analytic") && !isUpdate {
 		account.Tags = append(account.Tags, "analytic")
 	}
 
@@ -328,11 +328,11 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 		}
 
 		if account.Parent != nil && !isUpdate {
-			i := indexOf(parent.Tags, "analytic")
+			i := util.IndexOf(parent.Tags, "analytic")
 			if i != -1 {
 				parent.Tags = append(parent.Tags[:i], parent.Tags[i+1:]...)
 			}
-			if !contains(parent.Tags, "synthetic") {
+			if !util.Contains(parent.Tags, "synthetic") {
 				parent.Tags = append(parent.Tags, "synthetic")
 			}
 			if _, err = datastore.Put(c, account.Parent, parent); err != nil {
@@ -345,14 +345,9 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 		return
 	}
 
-	_, err = memcache.Get(c, "accounts_"+coaKey.Encode())
-	if err != nil {
-		if err != memcache.ErrCacheMiss {
-			return
-		}
+	err = memcache.Delete(c, "accounts_"+coaKey.Encode())
+	if err == memcache.ErrCacheMiss {
 		err = nil
-	} else {
-		err = memcache.Delete(c, "accounts_"+coaKey.Encode())
 	}
 
 	item = account
@@ -397,14 +392,13 @@ func DeleteAccount(c appengine.Context, m map[string]interface{}, param map[stri
 	}
 
 	err = datastore.Delete(c, key)
-	_, err = memcache.Get(c, "accounts_"+coaKey.Encode())
 	if err != nil {
-		if err != memcache.ErrCacheMiss {
-			return
-		}
+		return
+	}
+
+	err = memcache.Delete(c, "accounts_"+coaKey.Encode())
+	if err == memcache.ErrCacheMiss {
 		err = nil
-	} else {
-		err = memcache.Delete(c, "accounts_"+coaKey.Encode())
 	}
 
 	return
@@ -453,7 +447,7 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 
 			result = append(result, Entry{
 				Account: keys[0],
-				Value:   round(entry["value"].(float64)*100) / 100})
+				Value:   util.Round(entry["value"].(float64)*100) / 100})
 		}
 		return
 	}
@@ -743,7 +737,7 @@ func IncomeStatement(c appengine.Context, m map[string]string, _ *datastore.Key)
 	)
 
 	addBalance := func(entry *entryType, balance map[string]interface{}) *entryType {
-		if contains(balance["account"].(*Account).Tags, "analytic") && balance["value"].(float64) > 0 {
+		if util.Contains(balance["account"].(*Account).Tags, "analytic") && balance["value"].(float64) > 0 {
 			if entry == nil {
 				entry = &entryType{}
 			}
@@ -766,7 +760,7 @@ func IncomeStatement(c appengine.Context, m map[string]string, _ *datastore.Key)
 		for _, m := range balances {
 			account := m["account"].(*Account)
 			if (account.Parent == nil && parent == nil) || account.Parent.String() == parent.String() {
-				if contains(account.Tags, "creditBalance") {
+				if util.Contains(account.Tags, "creditBalance") {
 					revenueRoots = append(revenueRoots, account)
 				} else {
 					expenseRoots = append(expenseRoots, account)
@@ -786,21 +780,21 @@ func IncomeStatement(c appengine.Context, m map[string]string, _ *datastore.Key)
 
 	for _, m := range balances {
 		account := m["account"].(*Account)
-		if contains(account.Tags, "operating") && isDescendent(account, revenueRoots) {
+		if util.Contains(account.Tags, "operating") && isDescendent(account, revenueRoots) {
 			resultTyped.GrossRevenue = addBalance(resultTyped.GrossRevenue, m)
-		} else if contains(account.Tags, "deduction") {
+		} else if util.Contains(account.Tags, "deduction") {
 			resultTyped.Deduction = addBalance(resultTyped.Deduction, m)
-		} else if contains(account.Tags, "salesTax") {
+		} else if util.Contains(account.Tags, "salesTax") {
 			resultTyped.SalesTax = addBalance(resultTyped.SalesTax, m)
-		} else if contains(account.Tags, "cost") {
+		} else if util.Contains(account.Tags, "cost") {
 			resultTyped.Cost = addBalance(resultTyped.Cost, m)
-		} else if contains(account.Tags, "operating") && isDescendent(account, expenseRoots) {
+		} else if util.Contains(account.Tags, "operating") && isDescendent(account, expenseRoots) {
 			resultTyped.OperatingExpense = addBalance(resultTyped.OperatingExpense, m)
-		} else if contains(account.Tags, "nonOperatingTax") {
+		} else if util.Contains(account.Tags, "nonOperatingTax") {
 			resultTyped.NonOperatingTax = addBalance(resultTyped.NonOperatingTax, m)
-		} else if contains(account.Tags, "incomeTax") {
+		} else if util.Contains(account.Tags, "incomeTax") {
 			resultTyped.IncomeTax = addBalance(resultTyped.IncomeTax, m)
-		} else if contains(account.Tags, "dividends") {
+		} else if util.Contains(account.Tags, "dividends") {
 			resultTyped.Dividends = addBalance(resultTyped.Dividends, m)
 		} else if isDescendent(account, revenueRoots) {
 			resultTyped.NonOperatingRevenue = addBalance(resultTyped.NonOperatingRevenue, m)
@@ -858,8 +852,8 @@ func accountToMap(account *Account) map[string]interface{} {
 		"_id":           account.Key,
 		"number":        account.Number,
 		"name":          account.Name,
-		"debitBalance":  contains(account.Tags, "debitBalance"),
-		"creditBalance": contains(account.Tags, "creditBalance"),
+		"debitBalance":  util.Contains(account.Tags, "debitBalance"),
+		"creditBalance": util.Contains(account.Tags, "creditBalance"),
 	}
 }
 
@@ -968,7 +962,7 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 					if item["account"] != nil {
 						account := item["account"].(*Account)
 						item["value"] = item["value"].(float64) + f(account, value)
-						item["value"] = round(item["value"].(float64)*100) / 100
+						item["value"] = util.Round(item["value"].(float64)*100) / 100
 						accountKey = account.Parent
 					} else {
 						accountKey = nil
@@ -1009,105 +1003,13 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 	return result, nil
 }
 
-func contains(s []string, e string) bool {
-	return indexOf(s, e) != -1
-}
+func accounts(c appengine.Context, coaKey *datastore.Key, filters map[string]interface{}) (accountKeys []*datastore.Key, accounts []*Account, err error) {
 
-func indexOf(s []string, e string) int {
-	for i, a := range s {
-		if a == e {
-			return i
-		}
+	accountKeys, items, err := db.GetWithCache(c, "accounts_"+coaKey.Encode(), "Account", coaKey, []string{"Number"}, filters, &accounts, []*Account{})
+	if err != nil {
+		return
 	}
-	return -1
-}
-
-func accounts(c appengine.Context, coaKey *datastore.Key, accountFilters map[string]interface{}) (accountKeys []*datastore.Key, accounts []*Account, err error) {
-	var arr []interface{}
-	_, err = memcache.Gob.Get(c, "accounts_"+coaKey.Encode(), &arr)
-	if err == memcache.ErrCacheMiss {
-		q := datastore.NewQuery("Account").Ancestor(coaKey).Order("Number")
-		accountKeys, err = q.GetAll(c, &accounts)
-		accountKeysAsString := []string{}
-		for _, k := range accountKeys {
-			accountKeysAsString = append(accountKeysAsString, k.Encode())
-		}
-		item := &memcache.Item{
-			Key:    "accounts_" + coaKey.Encode(),
-			Object: []interface{}{accountKeysAsString, accounts},
-		}
-		if err = memcache.Gob.Set(c, item); err != nil {
-			return nil, nil, err
-		}
-	} else if err != nil {
-		return nil, nil, err
-	} else {
-		accountKeysAsString := arr[0].([]string)
-		accounts = arr[1].([]*Account)
-		accountKeys = []*datastore.Key{}
-		for _, k := range accountKeysAsString {
-			if key, err := datastore.DecodeKey(k); err != nil {
-				return nil, nil, err
-			} else {
-				accountKeys = append(accountKeys, key)
-			}
-		}
-	}
-	if accountFilters != nil {
-		var aa interface{}
-		accountKeys, aa, err = filter(accountKeys, accounts, accountFilters, []*Account{})
-		if err != nil {
-			return nil, nil, err
-		}
-		accounts = aa.([]*Account)
-	}
+	accounts = items.([]*Account)
 
 	return
-}
-
-func filter(keys []*datastore.Key, items interface{}, filters map[string]interface{}, dest interface{}) ([]*datastore.Key, interface{}, error) {
-	resultKeys := []*datastore.Key{}
-	resultItems := reflect.ValueOf(dest)
-	ii := reflect.ValueOf(items)
-	for i := 0; i < ii.Len(); i++ {
-		itemPtr := ii.Index(i)
-		item := itemPtr.Elem()
-		equals := true
-		for k, v := range filters {
-			if !strings.HasSuffix(k, " =") {
-				return nil, nil, fmt.Errorf("Operators other than equal are not allowed")
-			}
-			fn := strings.Replace(k, " =", "", 1)
-			f := item.FieldByName(fn)
-			if f.Kind() == reflect.Slice {
-				found := false
-				for j := 0; j < f.Len(); j++ {
-					if f.Index(j).Interface() == v {
-						found = true
-						break
-					}
-				}
-				if !found {
-					equals = false
-					break
-				}
-			} else if f.Interface() != v {
-				equals = false
-				break
-			}
-		}
-		if equals {
-			resultKeys = append(resultKeys, keys[i])
-			resultItems = reflect.Append(resultItems, itemPtr)
-		}
-	}
-	return resultKeys, resultItems.Interface(), nil
-}
-
-func round(f float64) float64 {
-	if f < 0 {
-		return float64(int(f - 0.5))
-	} else {
-		return float64(int(f + 0.5))
-	}
 }
