@@ -6,6 +6,7 @@ import (
 	"appengine/memcache"
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/util"
+	//"log"
 	"reflect"
 	"sort"
 	"strings"
@@ -85,7 +86,7 @@ type ValidationMessager interface {
 	ValidationMessage(appengine.Context, map[string]string) string
 }
 
-func GetWithCache(c appengine.Context, cacheKey, kind string, ancestor *datastore.Key, order []string, filters map[string]interface{}, items interface{}, filteredItems interface{}) ([]*datastore.Key, interface{}, error) {
+func Query(c appengine.Context, kind string, ancestor *datastore.Key, items interface{}, filteredItems interface{}, filters map[string]interface{}, order []string, cacheKey string) ([]*datastore.Key, interface{}, error) {
 	var arr []interface{}
 	var keys []*datastore.Key
 	_, err := memcache.Gob.Get(c, cacheKey, &arr)
@@ -131,7 +132,7 @@ func GetWithCache(c appengine.Context, cacheKey, kind string, ancestor *datastor
 		}
 	}
 	if filters != nil {
-		if keys, items, err = filter(keys, items, filters, order, filteredItems); err != nil {
+		if keys, items, err = filterAndSort(keys, items, filters, order, filteredItems); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -161,30 +162,36 @@ func (a TimeComparable) Less(b Comparable) bool {
 }
 
 type ByFields struct {
-	value  reflect.Value
+	keys   []*datastore.Key
+	values reflect.Value
 	fields []string
 }
 
-func (a ByFields) Len() int { return a.value.Len() }
+func (a ByFields) Len() int { return a.values.Len() }
 
 func (a ByFields) Swap(i, j int) {
-	vi := a.value.Index(i)
-	vi.Set(a.value.Index(j))
-	a.value.Index(j).Set(vi)
+	a.keys[i], a.keys[j] = a.keys[j], a.keys[i]
+	swap(a.values, i, j)
 }
 
 func (a ByFields) Less(i, j int) bool {
 	for _, f := range a.fields {
-		vi := reflect.Indirect(a.value.Index(i)).FieldByName(f)
-		vj := reflect.Indirect(a.value.Index(j)).FieldByName(f).Interface()
-		if ok, _ := matchesWithOperator(vi, vj, "<"); ok {
+		vi := a.values.Index(i).Elem().FieldByName(f).Interface()
+		vj := a.values.Index(j).Elem().FieldByName(f).Interface()
+		if ok, _ := compare(vi, vj, "<"); ok {
 			return true
 		}
 	}
 	return false
 }
 
-func filter(keys []*datastore.Key, items interface{}, filters map[string]interface{}, order []string, dest interface{}) ([]*datastore.Key, interface{}, error) {
+func swap(arr reflect.Value, i, j int) {
+	t := reflect.ValueOf(arr.Index(i).Interface())
+	arr.Index(i).Set(arr.Index(j))
+	arr.Index(j).Set(t)
+}
+
+func filterAndSort(keys []*datastore.Key, items interface{}, filters map[string]interface{}, order []string, dest interface{}) ([]*datastore.Key, interface{}, error) {
 	resultKeys := []*datastore.Key{}
 	resultItems := reflect.ValueOf(dest)
 	ii := reflect.ValueOf(items)
@@ -218,7 +225,7 @@ func filter(keys []*datastore.Key, items interface{}, filters map[string]interfa
 					break
 				}
 			} else if util.Contains([]string{"<", ">", "<=", ">="}, operator) {
-				ok, err := matchesWithOperator(f, v, operator)
+				ok, err := compare(f.Interface(), v, operator)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -236,24 +243,24 @@ func filter(keys []*datastore.Key, items interface{}, filters map[string]interfa
 		}
 	}
 	if order != nil {
-		sort.Sort(ByFields{resultItems, order})
+		sort.Sort(ByFields{resultKeys, resultItems, order})
 	}
 	return resultKeys, resultItems.Interface(), nil
 }
 
-func matchesWithOperator(f reflect.Value, v interface{}, operator string) (bool, error) {
+func compare(v1, v2 interface{}, operator string) (bool, error) {
 	var c1, c2 Comparable
-	if intValue, ok := f.Interface().(int); ok {
+	if intValue, ok := v1.(int); ok {
 		c1 = IntComparable(intValue)
-		c2 = IntComparable(v.(int))
-	} else if stringValue, ok := f.Interface().(string); ok {
+		c2 = IntComparable(v2.(int))
+	} else if stringValue, ok := v1.(string); ok {
 		c1 = StringComparable(stringValue)
-		c2 = StringComparable(v.(string))
-	} else if timeValue, ok := f.Interface().(time.Time); ok {
+		c2 = StringComparable(v2.(string))
+	} else if timeValue, ok := v1.(time.Time); ok {
 		c1 = TimeComparable(timeValue)
-		c2 = TimeComparable(v.(time.Time))
+		c2 = TimeComparable(v2.(time.Time))
 	} else {
-		return false, fmt.Errorf("Type not allowed: " + f.Type().String())
+		return false, fmt.Errorf("Type not allowed: " + reflect.ValueOf(v1).Type().String())
 	}
 	if (operator == "<" || operator == "<=") && c2.Less(c1) {
 		return false, nil
