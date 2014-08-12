@@ -634,9 +634,12 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 		return
 	}
 
-	q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date <=", to).Order("Date").Order("AsOf")
-	var transactions []*Transaction
-	keys, err := q.GetAll(c, &transactions)
+	/*
+		q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date <=", to).Order("Date").Order("AsOf")
+		var transactions []*Transaction
+		keys, err := q.GetAll(c, &transactions)
+	*/
+	keys, transactions, err := transactions(c, coaKey, map[string]interface{}{"Date <=": to})
 	if err != nil {
 		return
 	}
@@ -1003,13 +1006,24 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 	return result, nil
 }
 
-func accounts(c appengine.Context, coaKey *datastore.Key, filters map[string]interface{}) (accountKeys []*datastore.Key, accounts []*Account, err error) {
+func accounts(c appengine.Context, coaKey *datastore.Key, filters map[string]interface{}) (keys []*datastore.Key, accounts []*Account, err error) {
 
-	accountKeys, items, err := db.GetWithCache(c, "accounts_"+coaKey.Encode(), "Account", coaKey, []string{"Number"}, filters, &accounts, []*Account{})
+	keys, items, err := db.Query(c, "Account", coaKey, &accounts, []*Account{}, filters, []string{"Number"}, "accounts_"+coaKey.Encode())
 	if err != nil {
 		return
 	}
 	accounts = items.([]*Account)
+
+	return
+}
+
+func transactions(c appengine.Context, coaKey *datastore.Key, filters map[string]interface{}) (keys []*datastore.Key, transactions []*Transaction, err error) {
+
+	keys, items, err := db.Query(c, "Transaction", coaKey, &transactions, []*Transaction{}, filters, []string{"Date", "AsOf"}, "transactions_"+coaKey.Encode())
+	if err != nil {
+		return
+	}
+	transactions = items.([]*Transaction)
 
 	return
 }
