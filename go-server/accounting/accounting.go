@@ -1,7 +1,7 @@
 package accounting
 
 import (
-	"log"
+	//"log"
 	//"runtime/debug"
 	"appengine"
 	"appengine/datastore"
@@ -345,8 +345,7 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 		return
 	}
 
-	err = memcache.Delete(c, "accounts_"+coaKey.Encode())
-	if err == memcache.ErrCacheMiss {
+	if err = memcache.Delete(c, "accounts_"+coaKey.Encode()); err == memcache.ErrCacheMiss {
 		err = nil
 	}
 
@@ -396,8 +395,7 @@ func DeleteAccount(c appengine.Context, m map[string]interface{}, param map[stri
 		return
 	}
 
-	err = memcache.Delete(c, "accounts_"+coaKey.Encode())
-	if err == memcache.ErrCacheMiss {
+	if err = memcache.Delete(c, "accounts_"+coaKey.Encode()); err == memcache.ErrCacheMiss {
 		err = nil
 	}
 
@@ -491,6 +489,10 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 		}
 	}
 
+	if err = memcache.Delete(c, "transactions_"+coaKey.Encode()); err == memcache.ErrCacheMiss {
+		err = nil
+	}
+
 	transaction.Key = transactionKey
 	item = transaction
 
@@ -515,6 +517,10 @@ func DeleteTransaction(c appengine.Context, m map[string]interface{}, param map[
 	if err = memcache.Delete(c, "balances_asof_"+key.Parent().Encode()); err != nil && err != memcache.ErrCacheMiss {
 		return nil, err
 	}
+	if err = memcache.Delete(c, "transactions_"+key.Parent().Encode()); err != nil && err != memcache.ErrCacheMiss {
+		return nil, err
+	}
+
 	err = nil
 
 	return
@@ -634,11 +640,6 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 		return
 	}
 
-	/*
-		q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date <=", to).Order("Date").Order("AsOf")
-		var transactions []*Transaction
-		keys, err := q.GetAll(c, &transactions)
-	*/
 	keys, transactions, err := transactions(c, coaKey, map[string]interface{}{"Date <=": to})
 	if err != nil {
 		return
@@ -909,8 +910,6 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 
 	if err == memcache.ErrCacheMiss ||
 		(err == nil && (transactionsAsOf != balancesAsOf || balancesAsOf.IsZero())) {
-
-		log.Println("balances_ miss")
 
 		accountKeys, accounts, err := accounts(c, coaKey, accountFilters)
 		if err != nil {

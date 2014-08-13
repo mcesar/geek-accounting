@@ -14,6 +14,8 @@ import (
 func init() {
 	gob.Register(([]*Account)(nil))
 	gob.Register((*Account)(nil))
+	gob.Register(([]*Transaction)(nil))
+	gob.Register(([]interface{})(nil))
 }
 
 func TestSaveChartOfAccounts(t *testing.T) {
@@ -177,6 +179,100 @@ func TestJournal(t *testing.T) {
 	if len(journal) != 0 {
 		t.Error("Journal must have no entries")
 	}
+}
+
+func TestLedger(t *testing.T) {
+	c, err := aetest.NewContext(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer c.Close()
+
+	var coa *ChartOfAccounts
+	if coa, err = saveChartOfAccounts(c); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = saveAccount(c, coa, "1", "Assets", []string{"balanceSheet", "debitBalance"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = saveAccount(c, coa, "2", "Liabilities", []string{"balanceSheet", "creditBalance"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = saveTransaction(c, coa, "1", "2", ""); err != nil {
+		t.Fatal(err)
+	}
+
+	var obj interface{}
+	if obj, err = Ledger(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-01", "account": "1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	ledger := obj.(map[string]interface{})
+	account := ledger["account"].(map[string]interface{})
+	if account["name"] != "Assets" {
+		t.Error("Account name must be 'Assets'")
+	}
+	if len(ledger["entries"].([]interface{})) != 1 {
+		t.Error("Ledger must have one entry")
+	}
+	entry := ledger["entries"].([]interface{})[0].(map[string]interface{})
+	if entry["counterpart"].(map[string]interface{})["number"] != "2" {
+		t.Error("Counterpart must be account #2")
+	}
+	if entry["balance"] != 1.0 {
+		t.Error("Entry's balance must be account #2")
+	}
+	if ledger["balance"] != 0.0 {
+		t.Error("Ledger's balance must be 0")
+	}
+
+	if obj, err = Ledger(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-01", "account": "1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	ledger = obj.(map[string]interface{})
+	if account["name"] != "Assets" {
+		t.Error("Account name must be 'Assets'")
+	}
+	if len(ledger["entries"].([]interface{})) != 1 {
+		t.Error("Ledger must have one entry")
+	}
+	entry = ledger["entries"].([]interface{})[0].(map[string]interface{})
+	if entry["counterpart"].(map[string]interface{})["number"] != "2" {
+		t.Error("Counterpart must be account #2")
+	}
+	if entry["balance"] != 1.0 {
+		t.Error("Entry's balance must be account #2")
+	}
+	if ledger["balance"] != 0.0 {
+		t.Error("Ledger's balance must be 0")
+	}
+
+	if obj, err = Ledger(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-02", "to": "2014-05-02", "account": "1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	ledger = obj.(map[string]interface{})
+	if account["name"] != "Assets" {
+		t.Error("Account name must be 'Assets'")
+	}
+	if len(ledger["entries"].([]interface{})) != 0 {
+		t.Error("Ledger must have zero entries")
+	}
+	if ledger["balance"] != 1.0 {
+		t.Error("Ledger's balance must be 1")
+	}
+
+	for i := 0; i < 4; i++ {
+		if _, err := saveTransaction(c, coa, "1", "2", ""); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if obj, err = Ledger(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-02", "account": "1"}, nil); err != nil {
+		t.Fatal(err)
+	}
+	ledger = obj.(map[string]interface{})
+	if l := len(ledger["entries"].([]interface{})); l != 5 {
+		t.Errorf("Ledger must have five entries and have %v", l)
+	}
+
 }
 
 func TestBalance(t *testing.T) {

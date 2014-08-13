@@ -9,6 +9,7 @@ import (
 	//"log"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -86,6 +87,8 @@ type ValidationMessager interface {
 	ValidationMessage(appengine.Context, map[string]string) string
 }
 
+const MaxItemsPerMemcacheEntry = 500
+
 func Query(c appengine.Context, kind string, ancestor *datastore.Key, items interface{}, filteredItems interface{}, filters map[string]interface{}, order []string, cacheKey string) ([]*datastore.Key, interface{}, error) {
 	var arr []interface{}
 	var keys []*datastore.Key
@@ -95,48 +98,102 @@ func Query(c appengine.Context, kind string, ancestor *datastore.Key, items inte
 		if ancestor != nil {
 			q = q.Ancestor(ancestor)
 		}
-		/*
-			if order != nil {
-				for _, fieldName := range order {
-					q = q.Order(fieldName)
-				}
-			}
-		*/
 		if keys, err = q.GetAll(c, items); err != nil {
 			return nil, nil, err
 		}
-		items = reflect.Indirect(reflect.ValueOf(items)).Interface()
-		keysAsString := []string{}
-		for _, k := range keys {
-			keysAsString = append(keysAsString, k.Encode())
-		}
-		item := &memcache.Item{
-			Key:    cacheKey,
-			Object: []interface{}{keysAsString, items},
-		}
-		if err = memcache.Gob.Set(c, item); err != nil {
-			return nil, nil, err
+		itemsValue := reflect.Indirect(reflect.ValueOf(items))
+		items = itemsValue.Interface()
+		nextKey := cacheKey
+		nextChunk := 0
+		i := 0
+		for {
+			chunkSize := util.Min(MaxItemsPerMemcacheEntry, len(keys)-i)
+			keysChunk := make([]*datastore.Key, chunkSize)
+			itemsChunk := reflect.MakeSlice(itemsValue.Type(), chunkSize, chunkSize)
+			for j := 0; j < chunkSize; j++ {
+				keysChunk[j] = keys[i+j]
+				itemsChunk.Index(j).Set(itemsValue.Index(i + j))
+			}
+			if i+chunkSize >= len(keys) {
+				nextKey = ""
+			} else {
+				nextKey = strings.Split(cacheKey, "|")[0] + "|" + strconv.Itoa(nextChunk+1)
+			}
+			chunkArr := []interface{}{keysAsStrings(keysChunk), itemsChunk.Interface(), nextKey}
+			memcacheItem := &memcache.Item{
+				Key:    cacheKey,
+				Object: chunkArr,
+			}
+			if err = memcache.Gob.Set(c, memcacheItem); err != nil {
+				return nil, nil, err
+			}
+			if nextChunk == 0 {
+				arr = chunkArr
+			}
+			if len(nextKey) == 0 {
+				break
+			}
+			nextChunk++
+			cacheKey = strings.Split(cacheKey, "|")[0] + "|" + strconv.Itoa(nextChunk)
+			i += MaxItemsPerMemcacheEntry
 		}
 	} else if err != nil {
 		return nil, nil, err
-	} else {
-		keysAsString := arr[0].([]string)
-		items = arr[1]
-		keys = []*datastore.Key{}
-		for _, k := range keysAsString {
-			if key, err := datastore.DecodeKey(k); err != nil {
+	}
+	keys = []*datastore.Key{}
+	for {
+		chunkKeys, err := stringsAsKeys(arr[0].([]string))
+		if err != nil {
+			return nil, nil, err
+		}
+		if filters == nil {
+			itemsValue := reflect.ValueOf(arr[1])
+			resultItems := reflect.ValueOf(filteredItems)
+			for i := 0; i < itemsValue.Len(); i++ {
+				resultItems = reflect.Append(resultItems, itemsValue.Index(i))
+			}
+			filteredItems = resultItems.Interface()
+		} else {
+			if chunkKeys, filteredItems, err = filter(chunkKeys, arr[1], filters, filteredItems); err != nil {
 				return nil, nil, err
-			} else {
-				keys = append(keys, key)
 			}
 		}
-	}
-	if filters != nil {
-		if keys, items, err = filterAndSort(keys, items, filters, order, filteredItems); err != nil {
+		for i := 0; i < len(chunkKeys); i++ {
+			keys = append(keys, chunkKeys[i])
+		}
+		if len(arr[2].(string)) == 0 {
+			break
+		}
+		if _, err := memcache.Gob.Get(c, arr[2].(string), &arr); err != nil {
 			return nil, nil, err
 		}
 	}
+	items = filteredItems
+	if order != nil {
+		sort.Sort(ByFields{keys, reflect.ValueOf(items), order})
+	}
+
 	return keys, items, nil
+}
+
+func keysAsStrings(keys []*datastore.Key) []string {
+	result := []string{}
+	for _, k := range keys {
+		result = append(result, k.Encode())
+	}
+	return result
+}
+
+func stringsAsKeys(strings []string) ([]*datastore.Key, error) {
+	result := []*datastore.Key{}
+	for _, s := range strings {
+		if key, err := datastore.DecodeKey(s); err != nil {
+			return nil, err
+		} else {
+			result = append(result, key)
+		}
+	}
+	return result, nil
 }
 
 type Comparable interface {
@@ -178,6 +235,9 @@ func (a ByFields) Less(i, j int) bool {
 	for _, f := range a.fields {
 		vi := a.values.Index(i).Elem().FieldByName(f).Interface()
 		vj := a.values.Index(j).Elem().FieldByName(f).Interface()
+		if ok, _ := compare(vi, vj, ">"); ok {
+			return false
+		}
 		if ok, _ := compare(vi, vj, "<"); ok {
 			return true
 		}
@@ -191,7 +251,7 @@ func swap(arr reflect.Value, i, j int) {
 	arr.Index(j).Set(t)
 }
 
-func filterAndSort(keys []*datastore.Key, items interface{}, filters map[string]interface{}, order []string, dest interface{}) ([]*datastore.Key, interface{}, error) {
+func filter(keys []*datastore.Key, items interface{}, filters map[string]interface{}, dest interface{}) ([]*datastore.Key, interface{}, error) {
 	resultKeys := []*datastore.Key{}
 	resultItems := reflect.ValueOf(dest)
 	ii := reflect.ValueOf(items)
@@ -242,9 +302,6 @@ func filterAndSort(keys []*datastore.Key, items interface{}, filters map[string]
 			resultItems = reflect.Append(resultItems, itemPtr)
 		}
 	}
-	if order != nil {
-		sort.Sort(ByFields{resultKeys, resultItems, order})
-	}
 	return resultKeys, resultItems.Interface(), nil
 }
 
@@ -260,15 +317,18 @@ func compare(v1, v2 interface{}, operator string) (bool, error) {
 		c1 = TimeComparable(timeValue)
 		c2 = TimeComparable(v2.(time.Time))
 	} else {
-		return false, fmt.Errorf("Type not allowed: " + reflect.ValueOf(v1).Type().String())
+		return false, fmt.Errorf("Type not allowed: %v", reflect.ValueOf(v1).Type())
 	}
-	if (operator == "<" || operator == "<=") && c2.Less(c1) {
+	if (operator == "<") && !c1.Less(c2) {
 		return false, nil
 	}
-	if (operator == ">" || operator == ">=") && c1.Less(c2) {
+	if (operator == "<=") && c2.Less(c1) {
 		return false, nil
 	}
-	if (operator == "<" || operator == ">") && c1 == c2 {
+	if (operator == ">") && !c2.Less(c1) {
+		return false, nil
+	}
+	if (operator == ">=") && c1.Less(c2) {
 		return false, nil
 	}
 	return true, nil
