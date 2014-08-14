@@ -87,8 +87,6 @@ type ValidationMessager interface {
 	ValidationMessage(appengine.Context, map[string]string) string
 }
 
-const MaxItemsPerMemcacheEntry = 500
-
 func Query(c appengine.Context, kind string, ancestor *datastore.Key, items interface{}, filteredItems interface{}, filters map[string]interface{}, order []string, cacheKey string) ([]*datastore.Key, interface{}, error) {
 	var arr []interface{}
 	var keys []*datastore.Key
@@ -256,53 +254,55 @@ func filter(keys []*datastore.Key, items interface{}, filters map[string]interfa
 	resultItems := reflect.ValueOf(dest)
 	ii := reflect.ValueOf(items)
 	for i := 0; i < ii.Len(); i++ {
-		itemPtr := ii.Index(i)
-		item := itemPtr.Elem()
-		matches := true
-		for k, v := range filters {
-			keyArray := strings.Split(k, " ")
-			fn := keyArray[0]
-			operator := keyArray[1]
-			f := item.FieldByName(fn)
-			if f.Kind() == reflect.Slice {
-				if !strings.HasSuffix(k, " =") {
-					return nil, nil, fmt.Errorf("Operators other than equal are not allowed")
-				}
-				found := false
-				for j := 0; j < f.Len(); j++ {
-					if f.Index(j).Interface() == v {
-						found = true
-						break
-					}
-				}
-				if !found {
-					matches = false
-					break
-				}
-			} else if operator == "=" {
-				if f.Interface() != v {
-					matches = false
-					break
-				}
-			} else if util.Contains([]string{"<", ">", "<=", ">="}, operator) {
-				ok, err := compare(f.Interface(), v, operator)
-				if err != nil {
-					return nil, nil, err
-				}
-				if !ok {
-					matches = false
-					break
-				}
-			} else {
-				return nil, nil, fmt.Errorf("Operator not allowed: " + operator)
-			}
-		}
-		if matches {
+		item := ii.Index(i)
+		if ok, err := Matches(item.Elem().Interface(), filters); err != nil {
+			return nil, nil, err
+		} else if ok {
 			resultKeys = append(resultKeys, keys[i])
-			resultItems = reflect.Append(resultItems, itemPtr)
+			resultItems = reflect.Append(resultItems, item)
 		}
 	}
 	return resultKeys, resultItems.Interface(), nil
+}
+
+func Matches(value interface{}, filters map[string]interface{}) (bool, error) {
+	item := reflect.ValueOf(value).Elem()
+	for k, v := range filters {
+		keyArray := strings.Split(k, " ")
+		fn := keyArray[0]
+		operator := keyArray[1]
+		f := item.FieldByName(fn)
+		if f.Kind() == reflect.Slice {
+			if !strings.HasSuffix(k, " =") {
+				return false, fmt.Errorf("Operators other than equal are not allowed")
+			}
+			found := false
+			for j := 0; j < f.Len(); j++ {
+				if f.Index(j).Interface() == v {
+					found = true
+					break
+				}
+			}
+			if !found {
+				return false, nil
+			}
+		} else if operator == "=" {
+			if f.Interface() != v {
+				return false, nil
+			}
+		} else if util.Contains([]string{"<", ">", "<=", ">="}, operator) {
+			ok, err := compare(f.Interface(), v, operator)
+			if err != nil {
+				return false, err
+			}
+			if !ok {
+				return false, nil
+			}
+		} else {
+			return false, fmt.Errorf("Operator not allowed: " + operator)
+		}
+	}
+	return true, nil
 }
 
 func compare(v1, v2 interface{}, operator string) (bool, error) {

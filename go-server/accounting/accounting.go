@@ -15,6 +15,21 @@ import (
 	"time"
 )
 
+func UpdateSchema(c appengine.Context) (err error) {
+	q := datastore.NewQuery("Transaction")
+	transactions := []*Transaction{}
+	keys, err := q.GetAll(c, &transactions)
+	if err != nil {
+		return err
+	}
+	for i, tx := range transactions {
+		if _, err := datastore.Put(c, keys[i], tx); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 type ChartOfAccounts struct {
 	Key                     *datastore.Key `datastore:"-" json:"_id"`
 	Name                    string         `json:"name"`
@@ -138,14 +153,15 @@ func (account *Account) Credit(value float64) float64 {
 }
 
 type Transaction struct {
-	Key     *datastore.Key `datastore:"-" json:"_id"`
-	Debits  []Entry        `json:"debits"`
-	Credits []Entry        `json:"credits"`
-	Date    time.Time      `json:"date"`
-	Memo    string         `json:"memo"`
-	Tags    []string       `json:"tags"`
-	User    *datastore.Key `json:"user"`
-	AsOf    time.Time      `json:"timestamp"`
+	Key                  *datastore.Key `datastore:"-" json:"_id"`
+	Debits               []Entry        `json:"debits"`
+	Credits              []Entry        `json:"credits"`
+	Date                 time.Time      `json:"date"`
+	Memo                 string         `json:"memo"`
+	Tags                 []string       `json:"tags"`
+	User                 *datastore.Key `json:"user"`
+	AsOf                 time.Time      `json:"timestamp"`
+	AccountsKeysAsString []string       `json:"-"`
 }
 
 type Entry struct {
@@ -188,6 +204,26 @@ func (transaction *Transaction) ValidationMessage(c appengine.Context, param map
 		return "The sum of debit values must be equals to the sum of credit values"
 	}
 	return ""
+}
+
+func (transaction *Transaction) Load(c <-chan datastore.Property) error {
+	if err := datastore.LoadStruct(transaction, c); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (transaction *Transaction) Save(c chan<- datastore.Property) error {
+	accountsKeysAsString := []string{}
+	f := func(entries []Entry) {
+		for _, e := range entries {
+			accountsKeysAsString = append(accountsKeysAsString, e.Account.Encode())
+		}
+	}
+	f(transaction.Debits)
+	f(transaction.Credits)
+	transaction.AccountsKeysAsString = accountsKeysAsString
+	return datastore.SaveStruct(transaction, c)
 }
 
 func (entry *Entry) ValidationMessage(c appengine.Context, param map[string]string) string {
@@ -640,13 +676,17 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 		return
 	}
 
-	keys, transactions, err := transactions(c, coaKey, map[string]interface{}{"Date <=": to})
+	q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("AccountsKeysAsString =", account.Key.Encode()).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
+	var transactions []*Transaction
+	keys, err := q.GetAll(c, &transactions)
+
+	b, err := balances(c, coaKey, time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC), from.AddDate(0, 0, -1), map[string]interface{}{"Number =": account.Number})
 	if err != nil {
 		return
 	}
 
 	resultEntries := []interface{}{}
-	runningBalance, balance := 0.0, 0.0
+	runningBalance, balance := b[0]["value"].(float64), b[0]["value"].(float64)
 
 	addEntries := func(t *Transaction, entries []Entry, counterpartEntries []Entry, f func(*Account, float64) float64, kind string) {
 		for _, e := range entries {
@@ -654,27 +694,23 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 				continue
 			}
 			runningBalance += f(accountsMap[e.Account.String()], e.Value)
-			if t.Date.Before(from) {
-				balance = runningBalance
-			} else {
-				entry := map[string]interface{}{
-					"_id":     t.Key,
-					"date":    t.Date,
-					"memo":    t.Memo,
-					"balance": runningBalance,
-				}
-				entry[kind] = e.Value
-				counterpart := map[string]interface{}{}
-				entry["counterpart"] = counterpart
-				if len(counterpartEntries) == 1 {
-					counterpartAccount := accountsMap[counterpartEntries[0].Account.String()]
-					counterpart["number"] = counterpartAccount.Number
-					counterpart["name"] = counterpartAccount.Name
-				} else {
-					counterpart["name"] = "many"
-				}
-				resultEntries = append(resultEntries, entry)
+			entry := map[string]interface{}{
+				"_id":     t.Key,
+				"date":    t.Date,
+				"memo":    t.Memo,
+				"balance": runningBalance,
 			}
+			entry[kind] = e.Value
+			counterpart := map[string]interface{}{}
+			entry["counterpart"] = counterpart
+			if len(counterpartEntries) == 1 {
+				counterpartAccount := accountsMap[counterpartEntries[0].Account.String()]
+				counterpart["number"] = counterpartAccount.Number
+				counterpart["name"] = counterpartAccount.Name
+			} else {
+				counterpart["name"] = "many"
+			}
+			resultEntries = append(resultEntries, entry)
 		}
 		return
 	}
@@ -911,7 +947,7 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 	if err == memcache.ErrCacheMiss ||
 		(err == nil && (transactionsAsOf != balancesAsOf || balancesAsOf.IsZero())) {
 
-		accountKeys, accounts, err := accounts(c, coaKey, accountFilters)
+		accountKeys, accounts, err := accounts(c, coaKey, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -1000,6 +1036,18 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 		}
 	} else if err != nil {
 		return nil, err
+	}
+
+	if accountFilters != nil {
+		filteredResult := []map[string]interface{}{}
+		for _, item := range result {
+			if ok, err := db.Matches(item["account"].(*Account), accountFilters); err != nil {
+				return nil, err
+			} else if ok {
+				filteredResult = append(filteredResult, item)
+			}
+		}
+		result = filteredResult
 	}
 
 	return result, nil

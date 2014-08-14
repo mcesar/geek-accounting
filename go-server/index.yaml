@@ -29,6 +29,13 @@ indexes:
 - kind: Transaction
   ancestor: yes
   properties:
+  - name: AccountsKeysAsString
+  - name: Date
+  - name: AsOf
+
+- kind: Transaction
+  ancestor: yes
+  properties:
   - name: AsOf
 
 - kind: Transaction

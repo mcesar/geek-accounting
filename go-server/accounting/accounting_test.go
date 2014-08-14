@@ -219,7 +219,7 @@ func TestLedger(t *testing.T) {
 		t.Error("Counterpart must be account #2")
 	}
 	if entry["balance"] != 1.0 {
-		t.Error("Entry's balance must be account #2")
+		t.Error("Entry's balance must be 1")
 	}
 	if ledger["balance"] != 0.0 {
 		t.Error("Ledger's balance must be 0")
@@ -240,7 +240,7 @@ func TestLedger(t *testing.T) {
 		t.Error("Counterpart must be account #2")
 	}
 	if entry["balance"] != 1.0 {
-		t.Error("Entry's balance must be account #2")
+		t.Error("Entry's balance must be 1")
 	}
 	if ledger["balance"] != 0.0 {
 		t.Error("Ledger's balance must be 0")
@@ -257,7 +257,7 @@ func TestLedger(t *testing.T) {
 		t.Error("Ledger must have zero entries")
 	}
 	if ledger["balance"] != 1.0 {
-		t.Error("Ledger's balance must be 1")
+		t.Errorf("Ledger's balance must be 1, but was %v", ledger["balance"])
 	}
 
 	for i := 0; i < 4; i++ {

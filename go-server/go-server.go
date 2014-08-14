@@ -45,6 +45,15 @@ func init() {
 		if err := core.InitUserManagement(appengine.NewContext(r)); err != nil {
 			http.Error(w, "Internal error:"+err.Error(), http.StatusInternalServerError)
 		}
+		if err := accounting.UpdateSchema(appengine.NewContext(r)); err != nil {
+			http.Error(w, "Internal error:"+err.Error(), http.StatusInternalServerError)
+		}
+		return
+	})
+	r.HandleFunc("/update-schema", func(w http.ResponseWriter, r *http.Request) {
+		if err := accounting.UpdateSchema(appengine.NewContext(r)); err != nil {
+			http.Error(w, "Internal error:"+err.Error(), http.StatusInternalServerError)
+		}
 		return
 	})
 	r.HandleFunc("/ping", errorHandler(func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error {
