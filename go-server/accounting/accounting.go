@@ -686,7 +686,10 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 	}
 
 	resultEntries := []interface{}{}
-	runningBalance, balance := b[0]["value"].(float64), b[0]["value"].(float64)
+	runningBalance, balance := 0.0, 0.0
+	if len(b) > 0 {
+		runningBalance, balance = b[0]["value"].(float64), b[0]["value"].(float64)
+	}
 
 	addEntries := func(t *Transaction, entries []Entry, counterpartEntries []Entry, f func(*Account, float64) float64, kind string) {
 		for _, e := range entries {
