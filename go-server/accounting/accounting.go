@@ -6,9 +6,11 @@ import (
 	"appengine"
 	"appengine/datastore"
 	"appengine/memcache"
+	//"encoding/json"
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"github.com/mcesarhm/geek-accounting/go-server/util"
+	"math"
 	"sort"
 	//"strconv"
 	"strings"
@@ -206,6 +208,11 @@ func (transaction *Transaction) ValidationMessage(c appengine.Context, param map
 	return ""
 }
 
+func (transaction *Transaction) SetDebitsAndCredits(debits, credits []Entry) {
+	transaction.Debits = debits
+	transaction.Credits = credits
+}
+
 func (transaction *Transaction) Load(c <-chan datastore.Property) error {
 	if err := datastore.LoadStruct(transaction, c); err != nil {
 		return err
@@ -214,6 +221,11 @@ func (transaction *Transaction) Load(c <-chan datastore.Property) error {
 }
 
 func (transaction *Transaction) Save(c chan<- datastore.Property) error {
+	transaction.updateAccountsKeysAsString()
+	return datastore.SaveStruct(transaction, c)
+}
+
+func (transaction *Transaction) updateAccountsKeysAsString() {
 	accountsKeysAsString := []string{}
 	f := func(entries []Entry) {
 		for _, e := range entries {
@@ -223,7 +235,25 @@ func (transaction *Transaction) Save(c chan<- datastore.Property) error {
 	f(transaction.Debits)
 	f(transaction.Credits)
 	transaction.AccountsKeysAsString = accountsKeysAsString
-	return datastore.SaveStruct(transaction, c)
+}
+
+func (transaction *Transaction) incrementValue(lookupAccount func(*datastore.Key) *Account, addValue func(*datastore.Key, float64)) {
+	f := func(entries []Entry, f func(*Account, float64) float64) {
+		for _, e := range entries {
+			accountKey, value := e.Account, e.Value
+			for accountKey != nil {
+				account := lookupAccount(accountKey)
+				if account != nil {
+					addValue(accountKey, f(account, value))
+					accountKey = account.Parent
+				} else {
+					accountKey = nil
+				}
+			}
+		}
+	}
+	f(transaction.Debits, (*Account).Debit)
+	f(transaction.Credits, (*Account).Credit)
 }
 
 func (entry *Entry) ValidationMessage(c appengine.Context, param map[string]string) string {
@@ -465,31 +495,30 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 		return
 	}
 
-	entries := func(property string) (result []Entry, err error) {
-		for _, each := range m[property].([]interface{}) {
-
-			entry := each.(map[string]interface{})
-
-			q := datastore.NewQuery("Account").Ancestor(coaKey).Filter("Number = ", entry["account"]).KeysOnly()
+	entriesArray := func(entriesMapArray []interface{}) (result []Entry, err error) {
+		result = make([]Entry, len(entriesMapArray))
+		for i := 0; i < len(entriesMapArray); i++ {
+			entryMap := entriesMapArray[i].(map[string]interface{})
+			q := datastore.NewQuery("Account").Ancestor(coaKey).Filter("Number = ", entryMap["account"]).KeysOnly()
 			var keys []*datastore.Key
 			if keys, err = q.GetAll(c, nil); err != nil {
 				return
 			}
 			if len(keys) == 0 {
-				return nil, fmt.Errorf("Account '%v' not found", entry["account"])
+				return nil, fmt.Errorf("Account '%v' not found", entryMap["account"])
 			}
-
-			result = append(result, Entry{
+			result[i] = Entry{
 				Account: keys[0],
-				Value:   util.Round(entry["value"].(float64)*100) / 100})
+				Value:   util.Round(entryMap["value"].(float64)*100) / 100}
 		}
 		return
 	}
-	if transaction.Debits, err = entries("debits"); err != nil {
-		return
-	}
-	if transaction.Credits, err = entries("credits"); err != nil {
-		return
+	if debits, err := entriesArray(m["debits"].([]interface{})); err != nil {
+		return nil, err
+	} else if credits, err := entriesArray(m["credits"].([]interface{})); err != nil {
+		return nil, err
+	} else {
+		transaction.SetDebitsAndCredits(debits, credits)
 	}
 
 	var transactionKey *datastore.Key
@@ -561,6 +590,44 @@ func DeleteTransaction(c appengine.Context, m map[string]interface{}, param map[
 
 	return
 
+}
+
+type TransactionWithValue struct {
+	Transaction
+	Value float64
+}
+
+func TransactionsWithValue(c appengine.Context, coaKey *datastore.Key, account *Account, from, to time.Time) (transactions []*TransactionWithValue, balance float64, err error) {
+
+	q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("AccountsKeysAsString =", account.Key.Encode()).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
+	keys, err := q.GetAll(c, &transactions)
+
+	b, err := balances(c, coaKey, time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC), from.AddDate(0, 0, -1), map[string]interface{}{"Number =": account.Number})
+	if err != nil {
+		return
+	}
+	balance = 0.0
+	if len(b) > 0 {
+		balance = b[0]["value"].(float64)
+	}
+	var (
+		t *TransactionWithValue
+		i int
+	)
+	lookupAccount := func(key *datastore.Key) *Account {
+		if key.String() == account.Key.String() {
+			return account
+		}
+		return nil
+	}
+	addValue := func(key *datastore.Key, value float64) {
+		t.Value += value
+	}
+	for i, t = range transactions {
+		t.Key = keys[i]
+		t.incrementValue(lookupAccount, addValue)
+	}
+	return
 }
 
 func Balance(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
@@ -676,52 +743,46 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 		return
 	}
 
-	q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("AccountsKeysAsString =", account.Key.Encode()).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
-	var transactions []*Transaction
-	keys, err := q.GetAll(c, &transactions)
-
-	b, err := balances(c, coaKey, time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC), from.AddDate(0, 0, -1), map[string]interface{}{"Number =": account.Number})
+	transactions, balance, err := TransactionsWithValue(c, coaKey, account, from, to)
 	if err != nil {
 		return
 	}
-
 	resultEntries := []interface{}{}
-	runningBalance, balance := 0.0, 0.0
-	if len(b) > 0 {
-		runningBalance, balance = b[0]["value"].(float64), b[0]["value"].(float64)
-	}
-
-	addEntries := func(t *Transaction, entries []Entry, counterpartEntries []Entry, f func(*Account, float64) float64, kind string) {
+	runningBalance := balance
+	addEntries := func(t *TransactionWithValue, entries []Entry, counterpartEntries []Entry, kind string) {
+		found := false
 		for _, e := range entries {
-			if e.Account.String() != account.Key.String() {
-				continue
+			if e.Account.String() == account.Key.String() {
+				found = true
 			}
-			runningBalance += f(accountsMap[e.Account.String()], e.Value)
-			entry := map[string]interface{}{
-				"_id":     t.Key,
-				"date":    t.Date,
-				"memo":    t.Memo,
-				"balance": runningBalance,
-			}
-			entry[kind] = e.Value
-			counterpart := map[string]interface{}{}
-			entry["counterpart"] = counterpart
-			if len(counterpartEntries) == 1 {
-				counterpartAccount := accountsMap[counterpartEntries[0].Account.String()]
-				counterpart["number"] = counterpartAccount.Number
-				counterpart["name"] = counterpartAccount.Name
-			} else {
-				counterpart["name"] = "many"
-			}
-			resultEntries = append(resultEntries, entry)
 		}
+		if !found {
+			return
+		}
+		runningBalance += t.Value
+		entryMap := map[string]interface{}{
+			"_id":     t.Key,
+			"date":    t.Date,
+			"memo":    t.Memo,
+			"balance": runningBalance,
+		}
+		entryMap[kind] = math.Abs(t.Value)
+		counterpart := map[string]interface{}{}
+		entryMap["counterpart"] = counterpart
+		if len(counterpartEntries) == 1 {
+			counterpartAccount := accountsMap[counterpartEntries[0].Account.String()]
+			counterpart["number"] = counterpartAccount.Number
+			counterpart["name"] = counterpartAccount.Name
+		} else {
+			counterpart["name"] = "many"
+		}
+		resultEntries = append(resultEntries, entryMap)
 		return
 	}
 
-	for i, t := range transactions {
-		t.Key = keys[i]
-		addEntries(t, t.Debits, t.Credits, (*Account).Debit, "debit")
-		addEntries(t, t.Credits, t.Debits, (*Account).Credit, "credit")
+	for _, t := range transactions {
+		addEntries(t, t.Debits, t.Credits, "debit")
+		addEntries(t, t.Credits, t.Debits, "credit")
 	}
 
 	result = map[string]interface{}{
@@ -982,40 +1043,27 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 			return nil, err
 		}
 
-		/*
-			if transactionsAsOf != balancesAsOf &&
-				!transactionsAsOf.IsZero() && !balancesAsOf.IsZero() {
-				s := transactionsAsOf.String() + " ---> " + strconv.Itoa(len(transactions))
-				for _, t := range transactions {
-					s = s + "___" + t.AsOf.String()
-				}
-				panic(s)
-			}
-		*/
-
 		sort.Sort(ByDateAndAsOf(transactions))
 
-		incrementValue := func(entries []Entry, f func(*Account, float64) float64) {
-			for _, e := range entries {
-				accountKey, value := e.Account, e.Value
-				for accountKey != nil {
-					item := resultMap[accountKey.String()]
-					if item["account"] != nil {
-						account := item["account"].(*Account)
-						item["value"] = item["value"].(float64) + f(account, value)
-						item["value"] = util.Round(item["value"].(float64)*100) / 100
-						accountKey = account.Parent
-					} else {
-						accountKey = nil
-					}
-				}
+		lookupAccount := func(key *datastore.Key) *Account {
+			if key == nil {
+				return nil
+			}
+			item := resultMap[key.String()]
+			if item == nil || item["account"] == nil {
+				return nil
+			} else {
+				return item["account"].(*Account)
 			}
 		}
-
+		addValue := func(key *datastore.Key, value float64) {
+			item := resultMap[key.String()]
+			item["value"] = item["value"].(float64) + value
+			item["value"] = util.Round(item["value"].(float64)*100) / 100
+		}
 		for _, t := range transactions {
 			if !t.Date.Before(from) && !t.Date.After(to) {
-				incrementValue(t.Debits, (*Account).Debit)
-				incrementValue(t.Credits, (*Account).Credit)
+				t.incrementValue(lookupAccount, addValue)
 			}
 		}
 

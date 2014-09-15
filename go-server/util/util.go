@@ -28,3 +28,11 @@ func Min(i, j int) int {
 		return j
 	}
 }
+
+func Abs(i int) int {
+	if i < 0 {
+		return -i
+	} else {
+		return i
+	}
+}
