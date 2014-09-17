@@ -14,6 +14,10 @@ import (
 	"time"
 )
 
+type Identifiable struct {
+	Key *datastore.Key `datastore:"-" json:"_id"`
+}
+
 func GetAll(c appengine.Context, kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string) ([]*datastore.Key, interface{}, error) {
 	q := datastore.NewQuery(kind)
 	if len(ancestor) > 0 {
@@ -40,7 +44,9 @@ func GetAll(c appengine.Context, kind string, ancestor string, items interface{}
 	if items != nil {
 		v := reflect.ValueOf(items).Elem()
 		for i := 0; i < v.Len(); i++ {
-			reflect.Indirect(v.Index(i)).FieldByName("Key").Set(reflect.ValueOf(keys[i]))
+			if identifiable, ok := v.Index(i).Interface().(Identifiable); ok {
+				identifiable.Key = keys[i]
+			}
 		}
 	}
 	return keys, items, err
@@ -55,8 +61,9 @@ func Get(c appengine.Context, item interface{}, keyAsString string) (result inte
 	if err != nil {
 		return
 	}
-	v := reflect.ValueOf(item).Elem()
-	v.FieldByName("Key").Set(reflect.ValueOf(key))
+	if identifiable, ok := item.(Identifiable); ok {
+		identifiable.Key = key
+	}
 	result = item
 	return
 }
@@ -75,12 +82,13 @@ func Save(c appengine.Context, item interface{}, kind string, ancestor string, p
 		}
 	}
 
-	v := reflect.ValueOf(item).Elem()
-
-	if !v.FieldByName("Key").IsNil() {
-		key = v.FieldByName("Key").Interface().(*datastore.Key)
-	} else {
-		key = datastore.NewIncompleteKey(c, kind, ancestorKey)
+	var identifiable Identifiable
+	if identifiable, ok := item.(Identifiable); ok {
+		if identifiable.Key != nil {
+			key = identifiable.Key
+		} else {
+			key = datastore.NewIncompleteKey(c, kind, ancestorKey)
+		}
 	}
 
 	key, err = datastore.Put(c, key, item)
@@ -89,7 +97,7 @@ func Save(c appengine.Context, item interface{}, kind string, ancestor string, p
 	}
 
 	if key != nil {
-		v.FieldByName("Key").Set(reflect.ValueOf(key))
+		identifiable.Key = key
 	}
 
 	return

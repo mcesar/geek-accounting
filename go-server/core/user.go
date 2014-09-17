@@ -11,10 +11,10 @@ import (
 )
 
 type User struct {
-	Key      *datastore.Key `datastore:"-" json:"_id"`
-	User     string         `json:"user"`
-	Name     string         `json:"name"`
-	Password string         `json:"-"`
+	db.Identifiable
+	User     string `json:"user"`
+	Name     string `json:"name"`
+	Password string `json:"-"`
 }
 
 func (u *User) ValidationMessage(_ appengine.Context, m map[string]string) string {
