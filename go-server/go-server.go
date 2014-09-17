@@ -10,6 +10,7 @@ import (
 	//"runtime/debug"
 	"github.com/gorilla/mux"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting"
+	"github.com/mcesarhm/geek-accounting/go-server/accounting/reporting"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"strings"
 
@@ -37,10 +38,10 @@ func init() {
 	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}", postHandler(accounting.SaveTransaction)).Methods("PUT")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}", getAllHandler(accounting.GetTransaction)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}", deleteHandler(accounting.DeleteTransaction)).Methods("DELETE")
-	r.HandleFunc(PathPrefix+"/{coa}/balance-sheet", getAllHandler(accounting.Balance)).Methods("GET")
-	r.HandleFunc(PathPrefix+"/{coa}/journal", getAllHandler(accounting.Journal)).Methods("GET")
-	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}/ledger", getAllHandler(accounting.Ledger)).Methods("GET")
-	r.HandleFunc(PathPrefix+"/{coa}/income-statement", getAllHandler(accounting.IncomeStatement)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/balance-sheet", getAllHandler(reporting.Balance)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/journal", getAllHandler(reporting.Journal)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}/ledger", getAllHandler(reporting.Ledger)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/income-statement", getAllHandler(reporting.IncomeStatement)).Methods("GET")
 	r.HandleFunc("/_ah/warmup", func(w http.ResponseWriter, r *http.Request) {
 		if err := core.InitUserManagement(appengine.NewContext(r)); err != nil {
 			http.Error(w, "Internal error:"+err.Error(), http.StatusInternalServerError)
