@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"github.com/mcesarhm/geek-accounting/go-server/util"
-	"math"
 	"sort"
 	//"strconv"
 	"strings"
@@ -282,7 +281,8 @@ func (entry *Entry) ValidationMessage(c appengine.Context, param map[string]stri
 }
 
 func AllChartsOfAccounts(c appengine.Context, _ map[string]string, _ *datastore.Key) (interface{}, error) {
-	return db.GetAll(c, &[]ChartOfAccounts{}, "ChartOfAccounts", "", []string{"Name"})
+	_, chartsOfAccounts, err := db.GetAll(c, "ChartOfAccounts", "", &[]ChartOfAccounts{}, nil, []string{"Name"})
+	return chartsOfAccounts, err
 }
 
 func SaveChartOfAccounts(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (interface{}, error) {
@@ -295,7 +295,8 @@ func SaveChartOfAccounts(c appengine.Context, m map[string]interface{}, param ma
 }
 
 func AllAccounts(c appengine.Context, param map[string]string, _ *datastore.Key) (interface{}, error) {
-	return db.GetAll(c, &[]Account{}, "Account", param["coa"], []string{"Number"})
+	_, accounts, err := db.GetAll(c, "Account", param["coa"], &[]Account{}, nil, []string{"Number"})
+	return accounts, err
 }
 
 func GetAccount(c appengine.Context, param map[string]string, _ *datastore.Key) (result interface{}, err error) {
@@ -470,7 +471,8 @@ func DeleteAccount(c appengine.Context, m map[string]interface{}, param map[stri
 }
 
 func AllTransactions(c appengine.Context, param map[string]string, _ *datastore.Key) (interface{}, error) {
-	return db.GetAll(c, &[]Transaction{}, "Transaction", param["coa"], []string{"Date", "AsOf"})
+	_, transactions, err := db.GetAll(c, "Transaction", param["coa"], &[]Transaction{}, nil, []string{"Date", "AsOf"})
+	return transactions, err
 }
 
 func GetTransaction(c appengine.Context, param map[string]string, _ *datastore.Key) (result interface{}, err error) {
@@ -592,17 +594,46 @@ func DeleteTransaction(c appengine.Context, m map[string]interface{}, param map[
 
 }
 
+func Accounts(c appengine.Context, coaKey string, filters map[string]interface{}) (keys []*datastore.Key, accounts []*Account, err error) {
+
+	key, err := datastore.DecodeKey(coaKey)
+	if err != nil {
+		return
+	}
+
+	keys, items, err := db.GetAllFromCache(c, "Account", key, &accounts, []*Account{}, filters, []string{"Number"}, "accounts_"+coaKey)
+	if err != nil {
+		return
+	}
+	accounts = items.([]*Account)
+
+	return
+}
+
+func Transactions(c appengine.Context, coaKey string, filters map[string]interface{}) (keys []*datastore.Key, transactions []*Transaction, err error) {
+	keys, items, err := db.GetAll(c, "Transaction", coaKey, &transactions, filters, []string{"Date", "AsOf"})
+	if err != nil {
+		return
+	}
+	return keys, *items.(*[]*Transaction), err
+}
+
 type TransactionWithValue struct {
 	Transaction
 	Value float64
 }
 
-func TransactionsWithValue(c appengine.Context, coaKey *datastore.Key, account *Account, from, to time.Time) (transactions []*TransactionWithValue, balance float64, err error) {
+func TransactionsWithValue(c appengine.Context, coaKey string, account *Account, from, to time.Time) (transactions []*TransactionWithValue, balance float64, err error) {
 
-	q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("AccountsKeysAsString =", account.Key.Encode()).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
+	key, err := datastore.DecodeKey(coaKey)
+	if err != nil {
+		return
+	}
+
+	q := datastore.NewQuery("Transaction").Ancestor(key).Filter("AccountsKeysAsString =", account.Key.Encode()).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
 	keys, err := q.GetAll(c, &transactions)
 
-	b, err := balances(c, coaKey, time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC), from.AddDate(0, 0, -1), map[string]interface{}{"Number =": account.Number})
+	b, err := Balances(c, coaKey, time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC), from.AddDate(0, 0, -1), map[string]interface{}{"Number =": account.Number})
 	if err != nil {
 		return
 	}
@@ -630,337 +661,6 @@ func TransactionsWithValue(c appengine.Context, coaKey *datastore.Key, account *
 	return
 }
 
-func Balance(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
-	coaKey, err := datastore.DecodeKey(m["coa"])
-	if err != nil {
-		return
-	}
-	from := time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC)
-	to, err := time.Parse(time.RFC3339, m["at"]+"T00:00:00Z")
-	if err != nil {
-		return
-	}
-	b, err := balances(c, coaKey, from, to, map[string]interface{}{"Tags =": "balanceSheet"})
-	if err != nil {
-		return
-	}
-	for _, e := range b {
-		e["account"] = accountToMap(e["account"].(*Account))
-	}
-	result = b
-	return
-}
-
-func Journal(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
-
-	coaKey, err := datastore.DecodeKey(m["coa"])
-	if err != nil {
-		return
-	}
-	from, err := time.Parse(time.RFC3339, m["from"]+"T00:00:00Z")
-	to, err := time.Parse(time.RFC3339, m["to"]+"T00:00:00Z")
-	if err != nil {
-		return
-	}
-
-	accountKeys, accounts, err := accounts(c, coaKey, nil)
-	if err != nil {
-		return
-	}
-
-	q := datastore.NewQuery("Transaction").Ancestor(coaKey).Filter("Date >=", from).Filter("Date <=", to).Order("Date").Order("AsOf")
-	var transactions []*Transaction
-	transactionKeys, err := q.GetAll(c, &transactions)
-	if err != nil {
-		return
-	}
-
-	accountsMap := map[string]*Account{}
-	for i, a := range accounts {
-		accountsMap[accountKeys[i].String()] = a
-	}
-
-	resultMap := []map[string]interface{}{}
-
-	addEntries := func(entries []Entry) (result []map[string]interface{}) {
-		for _, e := range entries {
-			account := accountsMap[e.Account.String()]
-			result = append(result, map[string]interface{}{
-				"account": map[string]interface{}{
-					"number": account.Number,
-					"name":   account.Name,
-				},
-				"value": e.Value,
-			})
-		}
-		return
-	}
-
-	for i, t := range transactions {
-		m := map[string]interface{}{
-			"_id":     transactionKeys[i],
-			"date":    t.Date,
-			"memo":    t.Memo,
-			"debits":  addEntries(t.Debits),
-			"credits": addEntries(t.Credits),
-		}
-		resultMap = append(resultMap, m)
-	}
-
-	result = resultMap
-
-	return
-}
-
-func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
-
-	coaKey, err := datastore.DecodeKey(m["coa"])
-	if err != nil {
-		return
-	}
-	from, err := time.Parse(time.RFC3339, m["from"]+"T00:00:00Z")
-	to, err := time.Parse(time.RFC3339, m["to"]+"T00:00:00Z")
-	if err != nil {
-		return
-	}
-
-	accountKeys, accounts, err := accounts(c, coaKey, nil)
-	if err != nil {
-		return
-	}
-
-	var account *Account
-	accountsMap := map[string]*Account{}
-	for i, a := range accounts {
-		if a.Number == m["account"] || accountKeys[i].Encode() == m["account"] {
-			account = a
-			account.Key = accountKeys[i]
-		}
-		accountsMap[accountKeys[i].String()] = a
-	}
-	if account == nil {
-		err = fmt.Errorf("Account not found")
-		return
-	}
-
-	transactions, balance, err := TransactionsWithValue(c, coaKey, account, from, to)
-	if err != nil {
-		return
-	}
-	resultEntries := []interface{}{}
-	runningBalance := balance
-	addEntries := func(t *TransactionWithValue, entries []Entry, counterpartEntries []Entry, kind string) {
-		found := false
-		for _, e := range entries {
-			if e.Account.String() == account.Key.String() {
-				found = true
-			}
-		}
-		if !found {
-			return
-		}
-		runningBalance += t.Value
-		entryMap := map[string]interface{}{
-			"_id":     t.Key,
-			"date":    t.Date,
-			"memo":    t.Memo,
-			"balance": runningBalance,
-		}
-		entryMap[kind] = math.Abs(t.Value)
-		counterpart := map[string]interface{}{}
-		entryMap["counterpart"] = counterpart
-		if len(counterpartEntries) == 1 {
-			counterpartAccount := accountsMap[counterpartEntries[0].Account.String()]
-			counterpart["number"] = counterpartAccount.Number
-			counterpart["name"] = counterpartAccount.Name
-		} else {
-			counterpart["name"] = "many"
-		}
-		resultEntries = append(resultEntries, entryMap)
-		return
-	}
-
-	for _, t := range transactions {
-		addEntries(t, t.Debits, t.Credits, "debit")
-		addEntries(t, t.Credits, t.Debits, "credit")
-	}
-
-	result = map[string]interface{}{
-		"account": accountToMap(account),
-		"entries": resultEntries,
-		"balance": balance,
-	}
-
-	return
-}
-
-func IncomeStatement(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
-	coaKey, err := datastore.DecodeKey(m["coa"])
-	if err != nil {
-		return
-	}
-	from, err := time.Parse(time.RFC3339, m["from"]+"T00:00:00Z")
-	if err != nil {
-		return
-	}
-	to, err := time.Parse(time.RFC3339, m["to"]+"T00:00:00Z")
-	if err != nil {
-		return
-	}
-
-	balances, err := balances(c, coaKey, from, to, map[string]interface{}{"Tags =": "incomeStatement"})
-	if err != nil {
-		return
-	}
-
-	type entryType struct {
-		Balance float64       `json:"balance"`
-		Details []interface{} `json:"details"`
-	}
-	type resultType struct {
-		GrossRevenue          *entryType `json:"grossRevenue"`
-		Deduction             *entryType `json:"deduction"`
-		SalesTax              *entryType `json:"salesTax"`
-		NetRevenue            *entryType `json:"netRevenue"`
-		Cost                  *entryType `json:"cost"`
-		GrossProfit           *entryType `json:"grossProfit"`
-		OperatingExpense      *entryType `json:"operatingExpense"`
-		NetOperatingIncome    *entryType `json:"netOperatingIncome"`
-		NonOperatingRevenue   *entryType `json:"nonOperatingRevenue"`
-		NonOperatingExpense   *entryType `json:"nonOperatingExpense"`
-		NonOperatingTax       *entryType `json:"nonOperatingTax"`
-		IncomeBeforeIncomeTax *entryType `json:"incomeBeforeIncomeTax"`
-		IncomeTax             *entryType `json:"incomeTax"`
-		Dividends             *entryType `json:"dividends"`
-		NetIncome             *entryType `json:"netIncome"`
-	}
-
-	var (
-		resultTyped                resultType
-		revenueRoots, expenseRoots []*Account
-	)
-
-	addBalance := func(entry *entryType, balance map[string]interface{}) *entryType {
-		if util.Contains(balance["account"].(*Account).Tags, "analytic") && balance["value"].(float64) > 0 {
-			if entry == nil {
-				entry = &entryType{}
-			}
-			entry.Balance += balance["value"].(float64)
-			entry.Details = append(entry.Details, balance)
-		}
-		return entry
-	}
-
-	isDescendent := func(account *Account, parents []*Account) bool {
-		for _, p := range parents {
-			if strings.HasPrefix(account.Number, p.Number) {
-				return true
-			}
-		}
-		return false
-	}
-
-	collectRoots := func(parent *datastore.Key) {
-		for _, m := range balances {
-			account := m["account"].(*Account)
-			if (account.Parent == nil && parent == nil) || account.Parent.String() == parent.String() {
-				if util.Contains(account.Tags, "creditBalance") {
-					revenueRoots = append(revenueRoots, account)
-				} else {
-					expenseRoots = append(expenseRoots, account)
-				}
-			}
-		}
-	}
-
-	collectRoots(nil)
-
-	if (len(revenueRoots) + len(expenseRoots)) == 1 {
-		parentKey := append(revenueRoots, expenseRoots...)[0].Key
-		revenueRoots = revenueRoots[0:0]
-		expenseRoots = expenseRoots[0:0]
-		collectRoots(parentKey)
-	}
-
-	for _, m := range balances {
-		account := m["account"].(*Account)
-		if util.Contains(account.Tags, "operating") && isDescendent(account, revenueRoots) {
-			resultTyped.GrossRevenue = addBalance(resultTyped.GrossRevenue, m)
-		} else if util.Contains(account.Tags, "deduction") {
-			resultTyped.Deduction = addBalance(resultTyped.Deduction, m)
-		} else if util.Contains(account.Tags, "salesTax") {
-			resultTyped.SalesTax = addBalance(resultTyped.SalesTax, m)
-		} else if util.Contains(account.Tags, "cost") {
-			resultTyped.Cost = addBalance(resultTyped.Cost, m)
-		} else if util.Contains(account.Tags, "operating") && isDescendent(account, expenseRoots) {
-			resultTyped.OperatingExpense = addBalance(resultTyped.OperatingExpense, m)
-		} else if util.Contains(account.Tags, "nonOperatingTax") {
-			resultTyped.NonOperatingTax = addBalance(resultTyped.NonOperatingTax, m)
-		} else if util.Contains(account.Tags, "incomeTax") {
-			resultTyped.IncomeTax = addBalance(resultTyped.IncomeTax, m)
-		} else if util.Contains(account.Tags, "dividends") {
-			resultTyped.Dividends = addBalance(resultTyped.Dividends, m)
-		} else if isDescendent(account, revenueRoots) {
-			resultTyped.NonOperatingRevenue = addBalance(resultTyped.NonOperatingRevenue, m)
-		} else {
-			resultTyped.NonOperatingExpense = addBalance(resultTyped.NonOperatingExpense, m)
-		}
-	}
-
-	ze := &entryType{}
-	z := func(e *entryType) *entryType {
-		if e == nil {
-			return ze
-		} else {
-			return e
-		}
-	}
-
-	resultTyped.NetRevenue = &entryType{
-		Balance: z(resultTyped.GrossRevenue).Balance - z(resultTyped.Deduction).Balance -
-			z(resultTyped.SalesTax).Balance}
-	resultTyped.GrossProfit = &entryType{
-		Balance: z(resultTyped.NetRevenue).Balance -
-			z(resultTyped.Cost).Balance}
-	resultTyped.NetOperatingIncome = &entryType{
-		Balance: z(resultTyped.GrossProfit).Balance -
-			z(resultTyped.OperatingExpense).Balance}
-	resultTyped.IncomeBeforeIncomeTax = &entryType{
-		Balance: z(resultTyped.NetOperatingIncome).Balance +
-			z(resultTyped.NonOperatingRevenue).Balance -
-			z(resultTyped.NonOperatingExpense).Balance - z(resultTyped.NonOperatingTax).Balance}
-	resultTyped.NetIncome = &entryType{
-		Balance: z(resultTyped.IncomeBeforeIncomeTax).Balance -
-			z(resultTyped.IncomeTax).Balance - z(resultTyped.Dividends).Balance}
-
-	if resultTyped.NetRevenue.Balance == 0 || (z(resultTyped.Deduction).Balance == 0 && z(resultTyped.SalesTax).Balance == 0) {
-		resultTyped.NetRevenue = nil
-	}
-	if resultTyped.GrossProfit.Balance == 0 || z(resultTyped.Cost).Balance == 0 {
-		resultTyped.GrossProfit = nil
-	}
-	if resultTyped.NetOperatingIncome.Balance == 0 {
-		resultTyped.NetOperatingIncome = nil
-	}
-	if resultTyped.IncomeBeforeIncomeTax.Balance == 0 || z(resultTyped.NonOperatingTax).Balance == 0 {
-		resultTyped.IncomeBeforeIncomeTax = nil
-	}
-
-	result = resultTyped
-
-	return
-}
-
-func accountToMap(account *Account) map[string]interface{} {
-	return map[string]interface{}{
-		"_id":           account.Key,
-		"number":        account.Number,
-		"name":          account.Name,
-		"debitBalance":  util.Contains(account.Tags, "debitBalance"),
-		"creditBalance": util.Contains(account.Tags, "creditBalance"),
-	}
-}
-
 type ByDateAndAsOf []*Transaction
 
 func (a ByDateAndAsOf) Len() int      { return len(a) }
@@ -970,13 +670,18 @@ func (a ByDateAndAsOf) Less(i, j int) bool {
 		(a[i].Date.Equal(a[j].Date) && a[i].AsOf.Before(a[j].AsOf))
 }
 
-func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, accountFilters map[string]interface{}) (result []map[string]interface{}, err error) {
+func Balances(c appengine.Context, coaKey string, from, to time.Time, accountFilters map[string]interface{}) (result []map[string]interface{}, err error) {
+
+	key, err := datastore.DecodeKey(coaKey)
+	if err != nil {
+		return
+	}
 
 	var transactionsAsOf, balancesAsOf time.Time
 
-	_, err = memcache.Gob.Get(c, "transactions_asof_"+coaKey.Encode(), &transactionsAsOf)
+	_, err = memcache.Gob.Get(c, "transactions_asof_"+coaKey, &transactionsAsOf)
 	if err == memcache.ErrCacheMiss {
-		q := datastore.NewQuery("Transaction").Ancestor(coaKey).Order("-AsOf").Limit(1)
+		q := datastore.NewQuery("Transaction").Ancestor(key).Order("-AsOf").Limit(1)
 		var transactions []*Transaction
 		_, err = q.GetAll(c, &transactions)
 		if err != nil {
@@ -985,7 +690,7 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 		if len(transactions) == 1 {
 			transactionsAsOf = transactions[0].AsOf
 			cacheItem := &memcache.Item{
-				Key:    "transactions_asof_" + coaKey.Encode(),
+				Key:    "transactions_asof_" + coaKey,
 				Object: transactionsAsOf,
 			}
 			if err = memcache.Gob.Set(c, cacheItem); err != nil {
@@ -999,26 +704,26 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 	timespanAsString := from.String() + "_" + to.String()
 
 	var balancesAsOfMap map[string]time.Time
-	_, err = memcache.Gob.Get(c, "balances_asof_"+coaKey.Encode(), &balancesAsOfMap)
+	_, err = memcache.Gob.Get(c, "balances_asof_"+coaKey, &balancesAsOfMap)
 	if err != nil && err != memcache.ErrCacheMiss {
 		return
 	} else if err == nil {
 		balancesAsOf = balancesAsOfMap[timespanAsString]
 	}
 
-	_, err = memcache.Gob.Get(c, "balances_"+coaKey.Encode()+"_"+timespanAsString, &result)
+	_, err = memcache.Gob.Get(c, "balances_"+coaKey+"_"+timespanAsString, &result)
 
 	if err == memcache.ErrCacheMiss ||
 		(err == nil && (transactionsAsOf != balancesAsOf || balancesAsOf.IsZero())) {
 
-		accountKeys, accounts, err := accounts(c, coaKey, nil)
+		accountKeys, accounts, err := Accounts(c, coaKey, nil)
 		if err != nil {
 			return nil, err
 		}
 
 		resultMap := map[string]map[string]interface{}{}
 
-		q := datastore.NewQuery("Transaction").Ancestor(coaKey)
+		q := datastore.NewQuery("Transaction").Ancestor(key)
 
 		if transactionsAsOf != balancesAsOf &&
 			!transactionsAsOf.IsZero() && !balancesAsOf.IsZero() {
@@ -1068,7 +773,7 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 		}
 
 		item := &memcache.Item{
-			Key:    "balances_" + coaKey.Encode() + "_" + timespanAsString,
+			Key:    "balances_" + coaKey + "_" + timespanAsString,
 			Object: result,
 		}
 		if err = memcache.Gob.Set(c, item); err != nil {
@@ -1079,7 +784,7 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 		}
 		balancesAsOfMap[timespanAsString] = transactionsAsOf
 		item = &memcache.Item{
-			Key:    "balances_asof_" + coaKey.Encode(),
+			Key:    "balances_asof_" + coaKey,
 			Object: balancesAsOfMap,
 		}
 		if err = memcache.Gob.Set(c, item); err != nil {
@@ -1102,26 +807,4 @@ func balances(c appengine.Context, coaKey *datastore.Key, from, to time.Time, ac
 	}
 
 	return result, nil
-}
-
-func accounts(c appengine.Context, coaKey *datastore.Key, filters map[string]interface{}) (keys []*datastore.Key, accounts []*Account, err error) {
-
-	keys, items, err := db.Query(c, "Account", coaKey, &accounts, []*Account{}, filters, []string{"Number"}, "accounts_"+coaKey.Encode())
-	if err != nil {
-		return
-	}
-	accounts = items.([]*Account)
-
-	return
-}
-
-func transactions(c appengine.Context, coaKey *datastore.Key, filters map[string]interface{}) (keys []*datastore.Key, transactions []*Transaction, err error) {
-
-	keys, items, err := db.Query(c, "Transaction", coaKey, &transactions, []*Transaction{}, filters, []string{"Date", "AsOf"}, "transactions_"+coaKey.Encode())
-	if err != nil {
-		return
-	}
-	transactions = items.([]*Transaction)
-
-	return
 }

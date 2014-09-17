@@ -69,7 +69,8 @@ func ChangePassword(c appengine.Context, m map[string]interface{}, _ map[string]
 }
 
 func AllUsers(c appengine.Context, _ map[string]string, _ *datastore.Key) (interface{}, error) {
-	return db.GetAll(c, &[]User{}, "User", realm(c).Encode(), []string{"User"})
+	users, _, err := db.GetAll(c, "User", realm(c).Encode(), &[]User{}, nil, []string{"User"})
+	return users, err
 }
 
 func GetUser(c appengine.Context, param map[string]string, _ *datastore.Key) (interface{}, error) {

@@ -14,24 +14,36 @@ import (
 	"time"
 )
 
-func GetAll(c appengine.Context, items interface{}, kind string, ancestor string, orderKeys []string) (interface{}, error) {
+func GetAll(c appengine.Context, kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string) ([]*datastore.Key, interface{}, error) {
 	q := datastore.NewQuery(kind)
 	if len(ancestor) > 0 {
 		ancestorKey, err := datastore.DecodeKey(ancestor)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 		q = q.Ancestor(ancestorKey)
 	}
-	for _, o := range orderKeys {
-		q = q.Order(o)
+	if filters != nil {
+		for _, o := range orderKeys {
+			q = q.Order(o)
+		}
+	}
+	if orderKeys != nil {
+		for k, v := range filters {
+			q = q.Filter(k, v)
+		}
+	}
+	if items == nil {
+		q = q.KeysOnly()
 	}
 	keys, err := q.GetAll(c, items)
-	v := reflect.ValueOf(items).Elem()
-	for i := 0; i < v.Len(); i++ {
-		v.Index(i).FieldByName("Key").Set(reflect.ValueOf(keys[i]))
+	if items != nil {
+		v := reflect.ValueOf(items).Elem()
+		for i := 0; i < v.Len(); i++ {
+			reflect.Indirect(v.Index(i)).FieldByName("Key").Set(reflect.ValueOf(keys[i]))
+		}
 	}
-	return items, err
+	return keys, items, err
 }
 
 func Get(c appengine.Context, item interface{}, keyAsString string) (result interface{}, err error) {
@@ -87,7 +99,7 @@ type ValidationMessager interface {
 	ValidationMessage(appengine.Context, map[string]string) string
 }
 
-func Query(c appengine.Context, kind string, ancestor *datastore.Key, items interface{}, filteredItems interface{}, filters map[string]interface{}, order []string, cacheKey string) ([]*datastore.Key, interface{}, error) {
+func GetAllFromCache(c appengine.Context, kind string, ancestor *datastore.Key, items interface{}, filteredItems interface{}, filters map[string]interface{}, order []string, cacheKey string) ([]*datastore.Key, interface{}, error) {
 	var arr []interface{}
 	var keys []*datastore.Key
 	_, err := memcache.Gob.Get(c, cacheKey, &arr)
