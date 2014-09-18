@@ -18,6 +18,20 @@ type Identifiable struct {
 	Key *datastore.Key `datastore:"-" json:"_id"`
 }
 
+type Identifier interface {
+	GetKey() *datastore.Key
+	SetKey(*datastore.Key)
+}
+
+func (identifiable *Identifiable) GetKey() *datastore.Key {
+	return identifiable.Key
+}
+
+func (identifiable *Identifiable) SetKey(key *datastore.Key) {
+	identifiable.Key = key
+	return
+}
+
 func GetAll(c appengine.Context, kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string) ([]*datastore.Key, interface{}, error) {
 	q := datastore.NewQuery(kind)
 	if len(ancestor) > 0 {
@@ -44,9 +58,12 @@ func GetAll(c appengine.Context, kind string, ancestor string, items interface{}
 	if items != nil {
 		v := reflect.ValueOf(items).Elem()
 		for i := 0; i < v.Len(); i++ {
-			if identifiable, ok := v.Index(i).Interface().(Identifiable); ok {
-				identifiable.Key = keys[i]
+			ptr := v.Index(i)
+			if ptr.Kind() != reflect.Ptr {
+				ptr = ptr.Addr()
 			}
+			identifier := ptr.Interface().(Identifier)
+			identifier.SetKey(keys[i])
 		}
 	}
 	return keys, items, err
@@ -61,9 +78,8 @@ func Get(c appengine.Context, item interface{}, keyAsString string) (result inte
 	if err != nil {
 		return
 	}
-	if identifiable, ok := item.(Identifiable); ok {
-		identifiable.Key = key
-	}
+	identifier := item.(Identifier)
+	identifier.SetKey(key)
 	result = item
 	return
 }
@@ -82,13 +98,11 @@ func Save(c appengine.Context, item interface{}, kind string, ancestor string, p
 		}
 	}
 
-	var identifiable Identifiable
-	if identifiable, ok := item.(Identifiable); ok {
-		if identifiable.Key != nil {
-			key = identifiable.Key
-		} else {
-			key = datastore.NewIncompleteKey(c, kind, ancestorKey)
-		}
+	identifier := item.(Identifier)
+	if identifier.GetKey() != nil {
+		key = identifier.GetKey()
+	} else {
+		key = datastore.NewIncompleteKey(c, kind, ancestorKey)
 	}
 
 	key, err = datastore.Put(c, key, item)
@@ -97,7 +111,7 @@ func Save(c appengine.Context, item interface{}, kind string, ancestor string, p
 	}
 
 	if key != nil {
-		identifiable.Key = key
+		identifier.SetKey(key)
 	}
 
 	return
