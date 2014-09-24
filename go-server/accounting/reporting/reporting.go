@@ -2,16 +2,17 @@ package reporting
 
 import (
 	"appengine"
-	"appengine/datastore"
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting"
+	"github.com/mcesarhm/geek-accounting/go-server/core"
+	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"github.com/mcesarhm/geek-accounting/go-server/util"
 	"math"
 	"strings"
 	"time"
 )
 
-func Balance(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
+func Balance(c appengine.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
 	from := time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC)
 	to, err := time.Parse(time.RFC3339, m["at"]+"T00:00:00Z")
 	if err != nil {
@@ -28,7 +29,7 @@ func Balance(c appengine.Context, m map[string]string, _ *datastore.Key) (result
 	return
 }
 
-func Journal(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
+func Journal(c appengine.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
 
 	from, err := time.Parse(time.RFC3339, m["from"]+"T00:00:00Z")
 	if err != nil {
@@ -86,7 +87,7 @@ func Journal(c appengine.Context, m map[string]string, _ *datastore.Key) (result
 	return
 }
 
-func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
+func Ledger(c appengine.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
 
 	from, err := time.Parse(time.RFC3339, m["from"]+"T00:00:00Z")
 	if err != nil {
@@ -107,7 +108,7 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 	for i, a := range accounts {
 		if a.Number == m["account"] || accountKeys[i].Encode() == m["account"] {
 			account = a
-			account.Key = accountKeys[i]
+			account.Key = accountKeys.KeyAt(i)
 		}
 		accountsMap[accountKeys[i].String()] = a
 	}
@@ -167,7 +168,7 @@ func Ledger(c appengine.Context, m map[string]string, _ *datastore.Key) (result 
 	return
 }
 
-func IncomeStatement(c appengine.Context, m map[string]string, _ *datastore.Key) (result interface{}, err error) {
+func IncomeStatement(c appengine.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
 	from, err := time.Parse(time.RFC3339, m["from"]+"T00:00:00Z")
 	if err != nil {
 		return
@@ -229,10 +230,10 @@ func IncomeStatement(c appengine.Context, m map[string]string, _ *datastore.Key)
 		return false
 	}
 
-	collectRoots := func(parent *datastore.Key) {
+	collectRoots := func(parent db.Key) {
 		for _, m := range balances {
 			account := m["account"].(*accounting.Account)
-			if (account.Parent == nil && parent == nil) || account.Parent.String() == parent.String() {
+			if (account.Parent.IsNil() && parent.IsNil()) || account.Parent.String() == parent.String() {
 				if util.Contains(account.Tags, "creditBalance") {
 					revenueRoots = append(revenueRoots, account)
 				} else {
@@ -242,7 +243,7 @@ func IncomeStatement(c appengine.Context, m map[string]string, _ *datastore.Key)
 		}
 	}
 
-	collectRoots(nil)
+	collectRoots(db.NewNilKey())
 
 	if (len(revenueRoots) + len(expenseRoots)) == 1 {
 		parentKey := append(revenueRoots, expenseRoots...)[0].Key

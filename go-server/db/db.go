@@ -14,25 +14,78 @@ import (
 	"time"
 )
 
+type Key struct{ DsKey *datastore.Key }
+
+type Keys []*datastore.Key
+
+func NewNilKey() Key {
+	return Key{nil}
+}
+
+func DecodeKey(keyAsString string) (Key, error) {
+	k, err := datastore.DecodeKey(keyAsString)
+	return Key{k}, err
+}
+
+func (key Key) String() string {
+	if key.DsKey == nil {
+		return ""
+	}
+	return key.DsKey.String()
+}
+
+func (key Key) Encode() string {
+	return key.DsKey.Encode()
+}
+
+func (key Key) Parent() Key {
+	return Key{key.DsKey.Parent()}
+}
+
+func (key Key) IsNil() bool {
+	return key.DsKey == nil
+}
+
+func (key Key) MarshalJSON() ([]byte, error) {
+	s := ""
+	if key.DsKey != nil {
+		s = key.DsKey.Encode()
+	}
+	return []byte(fmt.Sprintf("\"%v\"", s)), nil
+}
+
+func (key Key) UnmarshalJSON(b []byte) error {
+	k, err := datastore.DecodeKey(string(b)[1 : len(string(b))-1])
+	if err != nil {
+		return err
+	}
+	key.DsKey = k
+	return nil
+}
+
+func (keys Keys) KeyAt(i int) Key {
+	return Key{keys[i]}
+}
+
 type Identifiable struct {
-	Key *datastore.Key `datastore:"-" json:"_id"`
+	Key Key `datastore:"-" json:"_id"`
 }
 
 type Identifier interface {
-	GetKey() *datastore.Key
-	SetKey(*datastore.Key)
+	GetKey() Key
+	SetKey(Key)
 }
 
-func (identifiable *Identifiable) GetKey() *datastore.Key {
+func (identifiable *Identifiable) GetKey() Key {
 	return identifiable.Key
 }
 
-func (identifiable *Identifiable) SetKey(key *datastore.Key) {
+func (identifiable *Identifiable) SetKey(key Key) {
 	identifiable.Key = key
 	return
 }
 
-func GetAll(c appengine.Context, kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string) ([]*datastore.Key, interface{}, error) {
+func GetAll(c appengine.Context, kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string) (Keys, interface{}, error) {
 	q := datastore.NewQuery(kind)
 	if len(ancestor) > 0 {
 		ancestorKey, err := datastore.DecodeKey(ancestor)
@@ -41,12 +94,12 @@ func GetAll(c appengine.Context, kind string, ancestor string, items interface{}
 		}
 		q = q.Ancestor(ancestorKey)
 	}
-	if filters != nil {
+	if orderKeys != nil {
 		for _, o := range orderKeys {
 			q = q.Order(o)
 		}
 	}
-	if orderKeys != nil {
+	if filters != nil {
 		for k, v := range filters {
 			q = q.Filter(k, v)
 		}
@@ -63,7 +116,7 @@ func GetAll(c appengine.Context, kind string, ancestor string, items interface{}
 				ptr = ptr.Addr()
 			}
 			identifier := ptr.Interface().(Identifier)
-			identifier.SetKey(keys[i])
+			identifier.SetKey(Key{keys[i]})
 		}
 	}
 	return keys, items, err
@@ -79,15 +132,15 @@ func Get(c appengine.Context, item interface{}, keyAsString string) (result inte
 		return
 	}
 	identifier := item.(Identifier)
-	identifier.SetKey(key)
+	identifier.SetKey(Key{key})
 	result = item
 	return
 }
 
-func Save(c appengine.Context, item interface{}, kind string, ancestor string, param map[string]string) (key *datastore.Key, err error) {
+func Save(c appengine.Context, item interface{}, kind string, ancestor string, param map[string]string) (key Key, err error) {
 	vm := item.(ValidationMessager).ValidationMessage(c, param)
 	if len(vm) > 0 {
-		return nil, fmt.Errorf(vm)
+		return Key{}, fmt.Errorf(vm)
 	}
 
 	var ancestorKey *datastore.Key
@@ -99,18 +152,18 @@ func Save(c appengine.Context, item interface{}, kind string, ancestor string, p
 	}
 
 	identifier := item.(Identifier)
-	if identifier.GetKey() != nil {
+	if !identifier.GetKey().IsNil() {
 		key = identifier.GetKey()
 	} else {
-		key = datastore.NewIncompleteKey(c, kind, ancestorKey)
+		key = Key{datastore.NewIncompleteKey(c, kind, ancestorKey)}
 	}
 
-	key, err = datastore.Put(c, key, item)
+	key.DsKey, err = datastore.Put(c, key.DsKey, item)
 	if err != nil {
 		return
 	}
 
-	if key != nil {
+	if !key.IsNil() {
 		identifier.SetKey(key)
 	}
 
@@ -121,14 +174,14 @@ type ValidationMessager interface {
 	ValidationMessage(appengine.Context, map[string]string) string
 }
 
-func GetAllFromCache(c appengine.Context, kind string, ancestor *datastore.Key, items interface{}, filteredItems interface{}, filters map[string]interface{}, order []string, cacheKey string) ([]*datastore.Key, interface{}, error) {
+func GetAllFromCache(c appengine.Context, kind string, ancestor Key, items interface{}, filteredItems interface{}, filters map[string]interface{}, order []string, cacheKey string) (Keys, interface{}, error) {
 	var arr []interface{}
 	var keys []*datastore.Key
 	_, err := memcache.Gob.Get(c, cacheKey, &arr)
 	if err == memcache.ErrCacheMiss {
 		q := datastore.NewQuery(kind)
-		if ancestor != nil {
-			q = q.Ancestor(ancestor)
+		if ancestor.DsKey != nil {
+			q = q.Ancestor(ancestor.DsKey)
 		}
 		if keys, err = q.GetAll(c, items); err != nil {
 			return nil, nil, err
@@ -140,7 +193,7 @@ func GetAllFromCache(c appengine.Context, kind string, ancestor *datastore.Key, 
 		i := 0
 		for {
 			chunkSize := util.Min(MaxItemsPerMemcacheEntry, len(keys)-i)
-			keysChunk := make([]*datastore.Key, chunkSize)
+			keysChunk := make(Keys, chunkSize)
 			itemsChunk := reflect.MakeSlice(itemsValue.Type(), chunkSize, chunkSize)
 			for j := 0; j < chunkSize; j++ {
 				keysChunk[j] = keys[i+j]
@@ -208,7 +261,7 @@ func GetAllFromCache(c appengine.Context, kind string, ancestor *datastore.Key, 
 	return keys, items, nil
 }
 
-func keysAsStrings(keys []*datastore.Key) []string {
+func keysAsStrings(keys Keys) []string {
 	result := []string{}
 	for _, k := range keys {
 		result = append(result, k.Encode())
@@ -216,7 +269,7 @@ func keysAsStrings(keys []*datastore.Key) []string {
 	return result
 }
 
-func stringsAsKeys(strings []string) ([]*datastore.Key, error) {
+func stringsAsKeys(strings []string) (Keys, error) {
 	result := []*datastore.Key{}
 	for _, s := range strings {
 		if key, err := datastore.DecodeKey(s); err != nil {
@@ -251,7 +304,7 @@ func (a TimeComparable) Less(b Comparable) bool {
 }
 
 type ByFields struct {
-	keys   []*datastore.Key
+	keys   Keys
 	values reflect.Value
 	fields []string
 }
@@ -283,8 +336,8 @@ func swap(arr reflect.Value, i, j int) {
 	arr.Index(j).Set(t)
 }
 
-func filter(keys []*datastore.Key, items interface{}, filters map[string]interface{}, dest interface{}) ([]*datastore.Key, interface{}, error) {
-	resultKeys := []*datastore.Key{}
+func filter(keys Keys, items interface{}, filters map[string]interface{}, dest interface{}) (Keys, interface{}, error) {
+	resultKeys := Keys{}
 	resultItems := reflect.ValueOf(dest)
 	ii := reflect.ValueOf(items)
 	for i := 0; i < ii.Len(); i++ {

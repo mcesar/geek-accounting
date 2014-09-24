@@ -9,6 +9,7 @@ import (
 	_ "fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting/reporting"
+	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"testing"
 	"time"
 )
@@ -30,7 +31,7 @@ func TestSaveChartOfAccounts(t *testing.T) {
 	if coa, err = saveChartOfAccounts(c); err != nil {
 		t.Fatal(err)
 	}
-	if coa.Key == nil {
+	if coa.Key.IsNil() {
 		t.Error("Key must not be null")
 	}
 	if coa.Name != "coa" {
@@ -38,7 +39,7 @@ func TestSaveChartOfAccounts(t *testing.T) {
 	}
 	time.Sleep(100 * time.Millisecond)
 	var obj interface{}
-	if obj, err = accounting.AllChartsOfAccounts(c, nil, nil); err != nil {
+	if obj, err = accounting.AllChartsOfAccounts(c, nil, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	coas := *obj.(*[]accounting.ChartOfAccounts)
@@ -61,7 +62,7 @@ func TestSaveAccount(t *testing.T) {
 	if a, err = saveAccount(c, coa, "1", "a1", []string{"balanceSheet", "debitBalance"}); err != nil {
 		t.Fatal(err)
 	}
-	if a.Key == nil {
+	if a.Key.IsNil() {
 		t.Error("Key must not be null")
 	}
 	if a.Number != "1" {
@@ -71,7 +72,7 @@ func TestSaveAccount(t *testing.T) {
 		t.Errorf("The name (%v) must be 'account'", a.Name)
 	}
 	var obj interface{}
-	if obj, err = accounting.AllAccounts(c, map[string]string{"coa": coa.Key.Encode()}, nil); err != nil {
+	if obj, err = accounting.AllAccounts(c, map[string]string{"coa": coa.Key.Encode()}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	accounts := *obj.(*[]accounting.Account)
@@ -104,7 +105,7 @@ func TestSaveTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if tx.Key == nil {
+	if tx.Key.IsNil() {
 		t.Error("Key must not be null")
 	}
 	if tx.Debits[0].Account == a1.Key {
@@ -115,7 +116,7 @@ func TestSaveTransaction(t *testing.T) {
 	}
 
 	var obj interface{}
-	if obj, err = accounting.AllTransactions(c, map[string]string{"coa": coa.Key.Encode()}, nil); err != nil {
+	if obj, err = accounting.AllTransactions(c, map[string]string{"coa": coa.Key.Encode()}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	transactions := *obj.(*[]accounting.Transaction)
@@ -147,7 +148,7 @@ func TestJournal(t *testing.T) {
 	}
 
 	var obj interface{}
-	if obj, err = reporting.Journal(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-01"}, nil); err != nil {
+	if obj, err = reporting.Journal(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-01"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	journal := obj.([]map[string]interface{})
@@ -161,7 +162,7 @@ func TestJournal(t *testing.T) {
 	if tx2, err = saveTransaction(c, coa, "2", "1", ""); err != nil {
 		t.Fatal(err)
 	}
-	if obj, err = reporting.Journal(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-01"}, nil); err != nil {
+	if obj, err = reporting.Journal(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-01"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	journal = obj.([]map[string]interface{})
@@ -174,7 +175,7 @@ func TestJournal(t *testing.T) {
 	if journal[1]["_id"].(*datastore.Key).Encode() != tx2.Key.Encode() {
 		t.Error("Journal's entry must encode transaction's key")
 	}
-	if obj, err = reporting.Journal(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-02", "to": "2014-05-02"}, nil); err != nil {
+	if obj, err = reporting.Journal(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-02", "to": "2014-05-02"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	journal = obj.([]map[string]interface{})
@@ -205,7 +206,7 @@ func TestLedger(t *testing.T) {
 	}
 
 	var obj interface{}
-	if obj, err = reporting.Ledger(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-01", "account": "1"}, nil); err != nil {
+	if obj, err = reporting.Ledger(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-01", "account": "1"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	ledger := obj.(map[string]interface{})
@@ -227,7 +228,7 @@ func TestLedger(t *testing.T) {
 		t.Error("Ledger's balance must be 0")
 	}
 
-	if obj, err = reporting.Ledger(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-01", "account": "1"}, nil); err != nil {
+	if obj, err = reporting.Ledger(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-01", "account": "1"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	ledger = obj.(map[string]interface{})
@@ -248,7 +249,7 @@ func TestLedger(t *testing.T) {
 		t.Error("Ledger's balance must be 0")
 	}
 
-	if obj, err = reporting.Ledger(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-02", "to": "2014-05-02", "account": "1"}, nil); err != nil {
+	if obj, err = reporting.Ledger(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-02", "to": "2014-05-02", "account": "1"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	ledger = obj.(map[string]interface{})
@@ -267,7 +268,7 @@ func TestLedger(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if obj, err = reporting.Ledger(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-02", "account": "1"}, nil); err != nil {
+	if obj, err = reporting.Ledger(c, map[string]string{"coa": coa.Key.Encode(), "from": "2014-05-01", "to": "2014-05-02", "account": "1"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	ledger = obj.(map[string]interface{})
@@ -300,7 +301,7 @@ func TestBalance(t *testing.T) {
 		t.Fatal(err)
 	}
 	var obj interface{}
-	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, nil); err != nil {
+	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	balance := obj.([]map[string]interface{})
@@ -324,7 +325,7 @@ func TestBalance(t *testing.T) {
 	if tx, err = saveTransaction(c, coa, "2", "1", ""); err != nil {
 		t.Fatal(err)
 	}
-	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, nil); err != nil {
+	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	balance = obj.([]map[string]interface{})
@@ -346,7 +347,7 @@ func TestBalance(t *testing.T) {
 	if tx, err = saveTransaction(c, coa, "1", "2", tx.Key.Encode()); err != nil {
 		t.Fatal(err)
 	}
-	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, nil); err != nil {
+	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	balance = obj.([]map[string]interface{})
@@ -371,7 +372,7 @@ func TestBalance(t *testing.T) {
 	if tx, err = saveTransaction(c, coa, "2", "1", tx.Key.Encode()); err != nil {
 		t.Fatal(err)
 	}
-	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, nil); err != nil {
+	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	balance = obj.([]map[string]interface{})
@@ -390,10 +391,10 @@ func TestBalance(t *testing.T) {
 	if balance[1]["value"] != 0.0 {
 		t.Error("Balance's value must be 0")
 	}
-	if _, err = accounting.DeleteTransaction(c, nil, map[string]string{"transaction": tx.Key.Encode()}, nil); err != nil {
+	if _, err = accounting.DeleteTransaction(c, nil, map[string]string{"transaction": tx.Key.Encode()}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
-	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, nil); err != nil {
+	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
 	balance = obj.([]map[string]interface{})
@@ -415,7 +416,7 @@ func TestBalance(t *testing.T) {
 }
 
 func saveChartOfAccounts(c appengine.Context) (*accounting.ChartOfAccounts, error) {
-	if obj, err := accounting.SaveChartOfAccounts(c, map[string]interface{}{"name": "coa"}, nil, nil); err != nil {
+	if obj, err := accounting.SaveChartOfAccounts(c, map[string]interface{}{"name": "coa"}, nil, core.NewNilUserKey()); err != nil {
 		return nil, err
 	} else {
 		return obj.(*accounting.ChartOfAccounts), nil
@@ -428,7 +429,7 @@ func saveAccount(c appengine.Context, coa *accounting.ChartOfAccounts, number, n
 	for _, t := range tags {
 		m[t] = true
 	}
-	if obj, err := accounting.SaveAccount(c, m, map[string]string{"coa": coa.Key.Encode()}, nil); err != nil {
+	if obj, err := accounting.SaveAccount(c, m, map[string]string{"coa": coa.Key.Encode()}, core.NewNilUserKey()); err != nil {
 		return nil, err
 	} else {
 		return obj.(*accounting.Account), nil
@@ -445,7 +446,7 @@ func saveTransaction(c appengine.Context, coa *accounting.ChartOfAccounts, a1, a
 	if len(tx) > 0 {
 		param["transaction"] = tx
 	}
-	if obj, err := accounting.SaveTransaction(c, txMap, param, nil); err != nil {
+	if obj, err := accounting.SaveTransaction(c, txMap, param, core.NewNilUserKey()); err != nil {
 		return nil, err
 	} else {
 		return obj.(*accounting.Transaction), nil

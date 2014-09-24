@@ -12,6 +12,7 @@ import (
 	"github.com/mcesarhm/geek-accounting/go-server/accounting"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting/reporting"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
+	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"strings"
 
 	"appengine"
@@ -69,13 +70,13 @@ func init() {
 	http.Handle("/", r)
 }
 
-func getAllHandler(f func(appengine.Context, map[string]string, *datastore.Key) (interface{}, error)) http.HandlerFunc {
+func getAllHandler(f func(appengine.Context, map[string]string, core.UserKey) (interface{}, error)) http.HandlerFunc {
 	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error {
 		params := mux.Vars(r)
 		for k, v := range r.URL.Query() {
 			params[k] = v[0]
 		}
-		items, err := f(appengine.NewContext(r), params, userKey)
+		items, err := f(appengine.NewContext(r), params, core.UserKey(db.Key{userKey}))
 		if err != nil {
 			return err
 		}
@@ -83,7 +84,7 @@ func getAllHandler(f func(appengine.Context, map[string]string, *datastore.Key) 
 	})
 }
 
-func postHandler(f func(appengine.Context, map[string]interface{}, map[string]string, *datastore.Key) (interface{}, error)) http.HandlerFunc {
+func postHandler(f func(appengine.Context, map[string]interface{}, map[string]string, core.UserKey) (interface{}, error)) http.HandlerFunc {
 	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error {
 		/*
 			b, _ := ioutil.ReadAll(r.Body)
@@ -96,7 +97,7 @@ func postHandler(f func(appengine.Context, map[string]interface{}, map[string]st
 		}
 
 		m := req.(map[string]interface{})
-		item, err := f(appengine.NewContext(r), m, mux.Vars(r), userKey)
+		item, err := f(appengine.NewContext(r), m, mux.Vars(r), core.UserKey(db.Key{userKey}))
 		if err != nil {
 			return badRequest{err}
 		}
@@ -107,10 +108,10 @@ func postHandler(f func(appengine.Context, map[string]interface{}, map[string]st
 	})
 }
 
-func deleteHandler(f func(appengine.Context, map[string]interface{}, map[string]string, *datastore.Key) (interface{}, error)) http.HandlerFunc {
+func deleteHandler(f func(appengine.Context, map[string]interface{}, map[string]string, core.UserKey) (interface{}, error)) http.HandlerFunc {
 	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error {
 
-		_, err := f(appengine.NewContext(r), nil, mux.Vars(r), userKey)
+		_, err := f(appengine.NewContext(r), nil, mux.Vars(r), core.UserKey(db.Key{userKey}))
 		if err != nil {
 			return badRequest{err}
 		}

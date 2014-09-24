@@ -10,6 +10,20 @@ import (
 	"strings"
 )
 
+type UserKey db.Key
+
+func NewNilUserKey() UserKey {
+	return UserKey(db.NewNilKey())
+}
+
+func (key UserKey) MarshalJSON() ([]byte, error) {
+	return db.Key(key).MarshalJSON()
+}
+
+func (key UserKey) UnmarshalJSON(b []byte) error {
+	return db.Key(key).UnmarshalJSON(b)
+}
+
 type User struct {
 	db.Identifiable
 	User     string `json:"user"`
@@ -54,9 +68,9 @@ func Login(c appengine.Context, login, password string) (error, bool, *datastore
 	return nil, true, key
 }
 
-func ChangePassword(c appengine.Context, m map[string]interface{}, _ map[string]string, userKey *datastore.Key) (item interface{}, err error) {
+func ChangePassword(c appengine.Context, m map[string]interface{}, _ map[string]string, userKey UserKey) (item interface{}, err error) {
 	user := User{}
-	err = datastore.Get(c, userKey, &user)
+	err = datastore.Get(c, userKey.DsKey, &user)
 	if err != nil {
 		return
 	}
@@ -64,20 +78,20 @@ func ChangePassword(c appengine.Context, m map[string]interface{}, _ map[string]
 		return nil, fmt.Errorf("Wrong old password")
 	}
 	user.Password = hash(m["newPassword"].(string))
-	_, err = datastore.Put(c, userKey, &user)
+	_, err = datastore.Put(c, userKey.DsKey, &user)
 	return
 }
 
-func AllUsers(c appengine.Context, _ map[string]string, _ *datastore.Key) (interface{}, error) {
+func AllUsers(c appengine.Context, _ map[string]string, _ UserKey) (interface{}, error) {
 	users, _, err := db.GetAll(c, "User", realm(c).Encode(), &[]User{}, nil, []string{"User"})
 	return users, err
 }
 
-func GetUser(c appengine.Context, param map[string]string, _ *datastore.Key) (interface{}, error) {
+func GetUser(c appengine.Context, param map[string]string, _ UserKey) (interface{}, error) {
 	return db.Get(c, &User{}, param["user"])
 }
 
-func SaveUser(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (item interface{}, err error) {
+func SaveUser(c appengine.Context, m map[string]interface{}, param map[string]string, userKey UserKey) (item interface{}, err error) {
 
 	user := &User{
 		User: m["user"].(string),
@@ -85,13 +99,13 @@ func SaveUser(c appengine.Context, m map[string]interface{}, param map[string]st
 	}
 
 	if userKeyAsString, ok := param["user"]; ok {
-		user.Key, err = datastore.DecodeKey(userKeyAsString)
+		user.Key, err = db.DecodeKey(userKeyAsString)
 		if err != nil {
 			return
 		}
 		if password, ok := m["password"]; !ok || len(password.(string)) == 0 {
 			var u User
-			err = datastore.Get(c, user.Key, &u)
+			err = datastore.Get(c, user.Key.DsKey, &u)
 			if err != nil {
 				return
 			}
@@ -112,7 +126,7 @@ func SaveUser(c appengine.Context, m map[string]interface{}, param map[string]st
 	return
 }
 
-func DeleteUser(c appengine.Context, m map[string]interface{}, param map[string]string, userKey *datastore.Key) (_ interface{}, err error) {
+func DeleteUser(c appengine.Context, m map[string]interface{}, param map[string]string, userKey UserKey) (_ interface{}, err error) {
 
 	key, err := datastore.DecodeKey(param["user"])
 	if err != nil {
