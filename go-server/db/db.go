@@ -14,6 +14,8 @@ import (
 	"time"
 )
 
+type M map[string]interface{}
+
 type Key struct{ DsKey *datastore.Key }
 
 type Keys []*datastore.Key
@@ -85,7 +87,26 @@ func (identifiable *Identifiable) SetKey(key Key) {
 	return
 }
 
+func Get(c appengine.Context, item interface{}, keyAsString string) (result interface{}, err error) {
+	key, err := datastore.DecodeKey(keyAsString)
+	if err != nil {
+		return
+	}
+	err = datastore.Get(c, key, item)
+	if err != nil {
+		return
+	}
+	identifier := item.(Identifier)
+	identifier.SetKey(Key{key})
+	result = item
+	return
+}
+
 func GetAll(c appengine.Context, kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string) (Keys, interface{}, error) {
+	return GetAllWithLimit(c, kind, ancestor, items, filters, orderKeys, 0)
+}
+
+func GetAllWithLimit(c appengine.Context, kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string, limit int) (Keys, interface{}, error) {
 	q := datastore.NewQuery(kind)
 	if len(ancestor) > 0 {
 		ancestorKey, err := datastore.DecodeKey(ancestor)
@@ -107,6 +128,9 @@ func GetAll(c appengine.Context, kind string, ancestor string, items interface{}
 	if items == nil {
 		q = q.KeysOnly()
 	}
+	if limit > 0 {
+		q = q.Limit(limit)
+	}
 	keys, err := q.GetAll(c, items)
 	if items != nil {
 		v := reflect.ValueOf(items).Elem()
@@ -122,27 +146,13 @@ func GetAll(c appengine.Context, kind string, ancestor string, items interface{}
 	return keys, items, err
 }
 
-func Get(c appengine.Context, item interface{}, keyAsString string) (result interface{}, err error) {
-	key, err := datastore.DecodeKey(keyAsString)
-	if err != nil {
-		return
-	}
-	err = datastore.Get(c, key, item)
-	if err != nil {
-		return
-	}
-	identifier := item.(Identifier)
-	identifier.SetKey(Key{key})
-	result = item
-	return
-}
-
 func Save(c appengine.Context, item interface{}, kind string, ancestor string, param map[string]string) (key Key, err error) {
-	vm := item.(ValidationMessager).ValidationMessage(c, param)
-	if len(vm) > 0 {
-		return Key{}, fmt.Errorf(vm)
+	if _, ok := item.(ValidationMessager); ok {
+		vm := item.(ValidationMessager).ValidationMessage(c, param)
+		if len(vm) > 0 {
+			return Key{}, fmt.Errorf(vm)
+		}
 	}
-
 	var ancestorKey *datastore.Key
 	if len(ancestor) > 0 {
 		ancestorKey, err = datastore.DecodeKey(ancestor)
@@ -150,24 +160,25 @@ func Save(c appengine.Context, item interface{}, kind string, ancestor string, p
 			return
 		}
 	}
-
 	identifier := item.(Identifier)
 	if !identifier.GetKey().IsNil() {
 		key = identifier.GetKey()
 	} else {
 		key = Key{datastore.NewIncompleteKey(c, kind, ancestorKey)}
 	}
-
 	key.DsKey, err = datastore.Put(c, key.DsKey, item)
 	if err != nil {
 		return
 	}
-
 	if !key.IsNil() {
 		identifier.SetKey(key)
 	}
 
 	return
+}
+
+func Delete(c appengine.Context, key Key) error {
+	return datastore.Delete(c, key.DsKey)
 }
 
 type ValidationMessager interface {
@@ -259,6 +270,12 @@ func GetAllFromCache(c appengine.Context, kind string, ancestor Key, items inter
 	}
 
 	return keys, items, nil
+}
+
+func Execute(c appengine.Context, f func() error) error {
+	return datastore.RunInTransaction(c, func(appengine.Context) (err error) {
+		return f()
+	}, nil)
 }
 
 func keysAsStrings(keys Keys) []string {

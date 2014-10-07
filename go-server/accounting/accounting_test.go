@@ -10,6 +10,7 @@ import (
 	"github.com/mcesarhm/geek-accounting/go-server/accounting"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting/reporting"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
+	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"testing"
 	"time"
 )
@@ -304,7 +305,7 @@ func TestBalance(t *testing.T) {
 	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
-	balance := obj.([]map[string]interface{})
+	balance := obj.([]db.M)
 	if len(balance) != 2 {
 		t.Error("Balance must have two entries")
 	}
@@ -328,7 +329,7 @@ func TestBalance(t *testing.T) {
 	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
-	balance = obj.([]map[string]interface{})
+	balance = obj.([]db.M)
 	if len(balance) != 2 {
 		t.Error("Balance must have two entries")
 	}
@@ -350,7 +351,7 @@ func TestBalance(t *testing.T) {
 	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
-	balance = obj.([]map[string]interface{})
+	balance = obj.([]db.M)
 	if len(balance) != 2 {
 		t.Error("Balance must have two entries")
 	}
@@ -375,7 +376,7 @@ func TestBalance(t *testing.T) {
 	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
-	balance = obj.([]map[string]interface{})
+	balance = obj.([]db.M)
 	if len(balance) != 2 {
 		t.Error("Balance must have two entries")
 	}
@@ -397,7 +398,7 @@ func TestBalance(t *testing.T) {
 	if obj, err = reporting.Balance(c, map[string]string{"coa": coa.Key.Encode(), "at": "2014-05-01"}, core.NewNilUserKey()); err != nil {
 		t.Fatal(err)
 	}
-	balance = obj.([]map[string]interface{})
+	balance = obj.([]db.M)
 	if len(balance) != 2 {
 		t.Error("Balance must have two entries")
 	}
