@@ -1,17 +1,13 @@
 package accounting
 
 import (
-	//"log"
-	//"runtime/debug"
-	"appengine"
-	"appengine/memcache"
-	//"encoding/json"
 	"fmt"
+	"github.com/mcesarhm/geek-accounting/go-server/context"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"github.com/mcesarhm/geek-accounting/go-server/util"
+	_ "log"
 	"sort"
-	//"strconv"
 	"strings"
 	"time"
 )
@@ -24,7 +20,7 @@ type ChartOfAccounts struct {
 	AsOf                    time.Time    `json:"timestamp"`
 }
 
-func (coa *ChartOfAccounts) ValidationMessage(_ appengine.Context, _ map[string]string) string {
+func (coa *ChartOfAccounts) ValidationMessage(_ context.Context, _ map[string]string) string {
 	if len(strings.TrimSpace(coa.Name)) == 0 {
 		return "The name must be informed"
 	}
@@ -60,7 +56,7 @@ var nonInheritedProperties = map[string]string{
 	"synthetic":     "",
 }
 
-func (account *Account) ValidationMessage(c appengine.Context, param map[string]string) string {
+func (account *Account) ValidationMessage(c context.Context, param map[string]string) string {
 	if len(strings.TrimSpace(account.Number)) == 0 {
 		return "The number must be informed"
 	}
@@ -88,7 +84,7 @@ func (account *Account) ValidationMessage(c appengine.Context, param map[string]
 	if count > 1 {
 		return "Only one income statement attribute is allowed"
 	}
-	coaKey, err := db.DecodeKey(param["coa"])
+	coaKey, err := c.Db.DecodeKey(param["coa"])
 	if err != nil {
 		return err.Error()
 	}
@@ -101,7 +97,7 @@ func (account *Account) ValidationMessage(c appengine.Context, param map[string]
 	}
 	if !account.Parent.IsNil() {
 		var parent Account
-		if _, err := db.Get(c, &parent, account.Parent.Encode()); err != nil {
+		if _, err := c.Db.Get(&parent, account.Parent.Encode()); err != nil {
 			return err.Error()
 		}
 		if !strings.HasPrefix(account.Number, parent.Number) {
@@ -156,7 +152,7 @@ type Entry struct {
 	Value   float64 `json:"value"`
 }
 
-func (transaction *Transaction) ValidationMessage(c appengine.Context, param map[string]string) string {
+func (transaction *Transaction) ValidationMessage(c context.Context, param map[string]string) string {
 	if len(transaction.Debits) == 0 {
 		return "At least one debit must be informed"
 	}
@@ -229,12 +225,12 @@ func (transaction *Transaction) incrementValue(lookupAccount func(db.Key) *Accou
 	f(transaction.Credits, (*Account).Credit)
 }
 
-func (entry *Entry) ValidationMessage(c appengine.Context, param map[string]string) string {
+func (entry *Entry) ValidationMessage(c context.Context, param map[string]string) string {
 	if entry.Account.IsNil() {
 		return "The account must be informed for each entry"
 	}
 	var account = new(Account)
-	if _, err := db.Get(c, account, entry.Account.Encode()); err != nil {
+	if _, err := c.Db.Get(account, entry.Account.Encode()); err != nil {
 		return err.Error()
 	}
 	if account == nil {
@@ -243,7 +239,7 @@ func (entry *Entry) ValidationMessage(c appengine.Context, param map[string]stri
 	if !util.Contains(account.Tags, "analytic") {
 		return "The account must be analytic"
 	}
-	coaKey, err := db.DecodeKey(param["coa"])
+	coaKey, err := c.Db.DecodeKey(param["coa"])
 	if err != nil {
 		return err.Error()
 	}
@@ -254,30 +250,30 @@ func (entry *Entry) ValidationMessage(c appengine.Context, param map[string]stri
 	return ""
 }
 
-func AllChartsOfAccounts(c appengine.Context, _ map[string]string, _ core.UserKey) (interface{}, error) {
-	_, chartsOfAccounts, err := db.GetAll(c, "ChartOfAccounts", "", &[]ChartOfAccounts{}, nil, []string{"Name"})
+func AllChartsOfAccounts(c context.Context, _ map[string]string, _ core.UserKey) (interface{}, error) {
+	_, chartsOfAccounts, err := c.Db.GetAll("ChartOfAccounts", "", &[]ChartOfAccounts{}, nil, []string{"Name"})
 	return chartsOfAccounts, err
 }
 
-func SaveChartOfAccounts(c appengine.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (interface{}, error) {
+func SaveChartOfAccounts(c context.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (interface{}, error) {
 	coa := &ChartOfAccounts{
 		Name: m["name"].(string),
 		User: userKey,
 		AsOf: time.Now()}
-	_, err := db.Save(c, coa, "ChartOfAccounts", "", param)
+	_, err := c.Db.Save(coa, "ChartOfAccounts", "", param)
 	return coa, err
 }
 
-func AllAccounts(c appengine.Context, param map[string]string, _ core.UserKey) (interface{}, error) {
-	_, accounts, err := db.GetAll(c, "Account", param["coa"], &[]Account{}, nil, []string{"Number"})
+func AllAccounts(c context.Context, param map[string]string, _ core.UserKey) (interface{}, error) {
+	_, accounts, err := c.Db.GetAll("Account", param["coa"], &[]Account{}, nil, []string{"Number"})
 	return accounts, err
 }
 
-func GetAccount(c appengine.Context, param map[string]string, _ core.UserKey) (result interface{}, err error) {
-	return db.Get(c, &Account{}, param["account"])
+func GetAccount(c context.Context, param map[string]string, _ core.UserKey) (result interface{}, err error) {
+	return c.Db.Get(&Account{}, param["account"])
 }
 
-func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (item interface{}, err error) {
+func SaveAccount(c context.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (item interface{}, err error) {
 
 	account := &Account{
 		Number: m["number"].(string),
@@ -290,7 +286,7 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 
 	if accountKeyAsString, ok := param["account"]; ok {
 		isUpdate = true
-		account.Key, err = db.DecodeKey(accountKeyAsString)
+		account.Key, err = c.Db.DecodeKey(accountKeyAsString)
 		if err != nil {
 			return
 		}
@@ -299,11 +295,11 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 	parent := &Account{}
 	if isUpdate {
 		var a Account
-		if _, err = db.Get(c, &a, account.Key.Encode()); err != nil {
+		if _, err = c.Db.Get(&a, account.Key.Encode()); err != nil {
 			return
 		}
 		if !a.Parent.IsNil() {
-			if _, err = db.Get(c, parent, a.Parent.Encode()); err != nil {
+			if _, err = c.Db.Get(parent, a.Parent.Encode()); err != nil {
 				return
 			}
 		}
@@ -312,7 +308,7 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 	}
 	if parentNumber, ok := m["parent"]; ok {
 		var accounts []Account
-		keys, _, err := db.GetAll(c, "Account", param["coa"], accounts, db.M{"Number = ": parentNumber}, nil)
+		keys, _, err := c.Db.GetAll("Account", param["coa"], accounts, db.M{"Number = ": parentNumber}, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -342,20 +338,20 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 		account.Tags = append(account.Tags, "analytic")
 	}
 
-	err = db.Execute(c, func() (err error) {
+	err = c.Db.Execute(func() (err error) {
 
-		accountKey, err := db.Save(c, account, "Account", param["coa"], param)
+		accountKey, err := c.Db.Save(account, "Account", param["coa"], param)
 		if err != nil {
 			return
 		}
 
 		if retainedEarningsAccount {
 			coa := new(ChartOfAccounts)
-			if _, err = db.Get(c, coa, param["coa"]); err != nil {
+			if _, err = c.Db.Get(coa, param["coa"]); err != nil {
 				return
 			}
 			coa.RetainedEarningsAccount = accountKey
-			if _, err = db.Save(c, coa, "ChartOfAccounts", "", param); err != nil {
+			if _, err = c.Db.Save(coa, "ChartOfAccounts", "", param); err != nil {
 				return
 			}
 		}
@@ -368,7 +364,7 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 			if !util.Contains(parent.Tags, "synthetic") {
 				parent.Tags = append(parent.Tags, "synthetic")
 			}
-			if _, err = db.Save(c, parent, "Account", param["coa"], param); err != nil {
+			if _, err = c.Db.Save(parent, "Account", param["coa"], param); err != nil {
 				return
 			}
 		}
@@ -378,28 +374,26 @@ func SaveAccount(c appengine.Context, m map[string]interface{}, param map[string
 		return
 	}
 
-	if err = memcache.Delete(c, "accounts_"+param["coa"]); err == memcache.ErrCacheMiss {
-		err = nil
-	}
+	err = c.Cache.Delete("accounts_" + param["coa"])
 
 	item = account
 	return
 }
 
-func DeleteAccount(c appengine.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (_ interface{}, err error) {
+func DeleteAccount(c context.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (_ interface{}, err error) {
 
-	key, err := db.DecodeKey(param["account"])
+	key, err := c.Db.DecodeKey(param["account"])
 	if err != nil {
 		return
 	}
 
-	coaKey, err := db.DecodeKey(param["coa"])
+	coaKey, err := c.Db.DecodeKey(param["coa"])
 	if err != nil {
 		return
 	}
 
 	checkReferences := func(kind, property, errorMessage string) error {
-		if keys, _, err := db.GetAll(c, kind, param["coa"], nil, db.M{property: key}, nil); err != nil {
+		if keys, _, err := c.Db.GetAll(kind, param["coa"], nil, db.M{property: key}, nil); err != nil {
 			return err
 		} else {
 			if len(keys) > 0 {
@@ -422,28 +416,26 @@ func DeleteAccount(c appengine.Context, m map[string]interface{}, param map[stri
 		return
 	}
 
-	if err = db.Delete(c, key); err != nil {
+	if err = c.Db.Delete(key); err != nil {
 		return
 	}
 
-	if err = memcache.Delete(c, "accounts_"+coaKey.Encode()); err == memcache.ErrCacheMiss {
-		err = nil
-	}
+	err = c.Cache.Delete("accounts_" + coaKey.Encode())
 
 	return
 
 }
 
-func AllTransactions(c appengine.Context, param map[string]string, _ core.UserKey) (interface{}, error) {
-	_, transactions, err := db.GetAll(c, "Transaction", param["coa"], &[]Transaction{}, nil, []string{"Date", "AsOf"})
+func AllTransactions(c context.Context, param map[string]string, _ core.UserKey) (interface{}, error) {
+	_, transactions, err := c.Db.GetAll("Transaction", param["coa"], &[]Transaction{}, nil, []string{"Date", "AsOf"})
 	return transactions, err
 }
 
-func GetTransaction(c appengine.Context, param map[string]string, _ core.UserKey) (result interface{}, err error) {
-	return db.Get(c, &Transaction{}, param["transaction"])
+func GetTransaction(c context.Context, param map[string]string, _ core.UserKey) (result interface{}, err error) {
+	return c.Db.Get(&Transaction{}, param["transaction"])
 }
 
-func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (item interface{}, err error) {
+func SaveTransaction(c context.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (item interface{}, err error) {
 
 	asOf := time.Now()
 
@@ -456,7 +448,7 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 		return
 	}
 
-	coaKey, err := db.DecodeKey(param["coa"])
+	coaKey, err := c.Db.DecodeKey(param["coa"])
 	if err != nil {
 		return
 	}
@@ -488,39 +480,33 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 	var transactionKey db.Key
 	isUpdate := false
 	if _, ok := param["transaction"]; ok {
-		transaction.Key, err = db.DecodeKey(param["transaction"])
+		transaction.Key, err = c.Db.DecodeKey(param["transaction"])
 		if err != nil {
 			return
 		}
 		isUpdate = true
 	}
 
-	transactionKey, err = db.Save(c, transaction, "Transaction", param["coa"], param)
+	transactionKey, err = c.Db.Save(transaction, "Transaction", param["coa"], param)
 	if err != nil {
 		return
 	}
 
 	if isUpdate {
-		if err = memcache.Delete(c, "transactions_asof_"+coaKey.Encode()); err != nil && err != memcache.ErrCacheMiss {
+		if err = c.Cache.Delete("transactions_asof_" + coaKey.Encode()); err != nil {
 			return nil, err
 		}
-		if err = memcache.Delete(c, "balances_asof_"+coaKey.Encode()); err != nil && err != memcache.ErrCacheMiss {
+		if err = c.Cache.Delete("balances_asof_" + coaKey.Encode()); err != nil {
 			return nil, err
 		}
 		err = nil
 	} else {
-		cacheItem := &memcache.Item{
-			Key:    "transactions_asof_" + coaKey.Encode(),
-			Object: asOf,
-		}
-		if err = memcache.Gob.Set(c, cacheItem); err != nil {
+		if err = c.Cache.Set("transactions_asof_"+coaKey.Encode(), asOf); err != nil {
 			return nil, err
 		}
 	}
 
-	if err = memcache.Delete(c, "transactions_"+coaKey.Encode()); err == memcache.ErrCacheMiss {
-		err = nil
-	}
+	err = c.Cache.Delete("transactions_" + coaKey.Encode())
 
 	transaction.Key = transactionKey
 	item = transaction
@@ -528,24 +514,24 @@ func SaveTransaction(c appengine.Context, m map[string]interface{}, param map[st
 	return
 }
 
-func DeleteTransaction(c appengine.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (_ interface{}, err error) {
+func DeleteTransaction(c context.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (_ interface{}, err error) {
 
-	key, err := db.DecodeKey(param["transaction"])
+	key, err := c.Db.DecodeKey(param["transaction"])
 	if err != nil {
 		return
 	}
 
-	if err = db.Delete(c, key); err != nil {
+	if err = c.Db.Delete(key); err != nil {
 		return
 	}
 
-	if err = memcache.Delete(c, "transactions_asof_"+key.Parent().Encode()); err != nil && err != memcache.ErrCacheMiss {
+	if err = c.Cache.Delete("transactions_asof_" + key.Parent().Encode()); err != nil {
 		return nil, err
 	}
-	if err = memcache.Delete(c, "balances_asof_"+key.Parent().Encode()); err != nil && err != memcache.ErrCacheMiss {
+	if err = c.Cache.Delete("balances_asof_" + key.Parent().Encode()); err != nil {
 		return nil, err
 	}
-	if err = memcache.Delete(c, "transactions_"+key.Parent().Encode()); err != nil && err != memcache.ErrCacheMiss {
+	if err = c.Cache.Delete("transactions_" + key.Parent().Encode()); err != nil {
 		return nil, err
 	}
 
@@ -555,14 +541,14 @@ func DeleteTransaction(c appengine.Context, m map[string]interface{}, param map[
 
 }
 
-func Accounts(c appengine.Context, coaKey string, filters map[string]interface{}) (keys db.Keys, accounts []*Account, err error) {
+func Accounts(c context.Context, coaKey string, filters map[string]interface{}) (keys db.Keys, accounts []*Account, err error) {
 
-	key, err := db.DecodeKey(coaKey)
+	key, err := c.Db.DecodeKey(coaKey)
 	if err != nil {
 		return
 	}
 
-	keys, items, err := db.GetAllFromCache(c, "Account", key, &accounts, []*Account{}, filters, []string{"Number"}, "accounts_"+coaKey)
+	keys, items, err := c.Db.GetAllFromCache("Account", key, &accounts, []*Account{}, filters, []string{"Number"}, "accounts_"+coaKey)
 	if err != nil {
 		return
 	}
@@ -571,8 +557,8 @@ func Accounts(c appengine.Context, coaKey string, filters map[string]interface{}
 	return
 }
 
-func Transactions(c appengine.Context, coaKey string, filters map[string]interface{}) (keys db.Keys, transactions []*Transaction, err error) {
-	keys, items, err := db.GetAll(c, "Transaction", coaKey, &transactions, filters, []string{"Date", "AsOf"})
+func Transactions(c context.Context, coaKey string, filters map[string]interface{}) (keys db.Keys, transactions []*Transaction, err error) {
+	keys, items, err := c.Db.GetAll("Transaction", coaKey, &transactions, filters, []string{"Date", "AsOf"})
 	if err != nil {
 		return
 	}
@@ -584,10 +570,10 @@ type TransactionWithValue struct {
 	Value float64
 }
 
-func TransactionsWithValue(c appengine.Context, coaKey string, account *Account, from, to time.Time) (transactions []*TransactionWithValue, balance float64, err error) {
+func TransactionsWithValue(c context.Context, coaKey string, account *Account, from, to time.Time) (transactions []*TransactionWithValue, balance float64, err error) {
 
 	var keys db.Keys
-	if keys, _, err = db.GetAll(c, "Transaction", coaKey, &transactions, db.M{"AccountsKeysAsString =": account.Key.Encode(), "Date >=": from, "Date <=": to}, []string{"Date", "AsOf"}); err != nil {
+	if keys, _, err = c.Db.GetAll("Transaction", coaKey, &transactions, db.M{"AccountsKeysAsString =": account.Key.Encode(), "Date >=": from, "Date <=": to}, []string{"Date", "AsOf"}); err != nil {
 		return
 	}
 
@@ -628,44 +614,41 @@ func (a ByDateAndAsOf) Less(i, j int) bool {
 		(a[i].Date.Equal(a[j].Date) && a[i].AsOf.Before(a[j].AsOf))
 }
 
-func Balances(c appengine.Context, coaKey string, from, to time.Time, accountFilters db.M) (result []db.M, err error) {
+func Balances(c context.Context, coaKey string, from, to time.Time, accountFilters db.M) (result []db.M, err error) {
 
 	var transactionsAsOf, balancesAsOf time.Time
 
-	_, err = memcache.Gob.Get(c, "transactions_asof_"+coaKey, &transactionsAsOf)
-	if err == memcache.ErrCacheMiss {
+	err = c.Cache.Get("transactions_asof_"+coaKey, &transactionsAsOf)
+	if err != nil {
+		return
+	}
+	if transactionsAsOf.IsZero() {
 		var transactions []*Transaction
-		_, _, err = db.GetAllWithLimit(c, "Transaction", coaKey, &transactions, nil, []string{"-AsOf"}, 1)
+		_, _, err = c.Db.GetAllWithLimit("Transaction", coaKey, &transactions, nil, []string{"-AsOf"}, 1)
 		if err != nil {
 			return nil, err
 		}
 		if len(transactions) == 1 {
 			transactionsAsOf = transactions[0].AsOf
-			cacheItem := &memcache.Item{
-				Key:    "transactions_asof_" + coaKey,
-				Object: transactionsAsOf,
-			}
-			if err = memcache.Gob.Set(c, cacheItem); err != nil {
+			if err = c.Cache.Set("transactions_asof_"+coaKey, transactionsAsOf); err != nil {
 				return nil, err
 			}
 		}
-	} else if err != nil {
-		return
 	}
 
 	timespanAsString := from.String() + "_" + to.String()
 
 	var balancesAsOfMap map[string]time.Time
-	_, err = memcache.Gob.Get(c, "balances_asof_"+coaKey, &balancesAsOfMap)
-	if err != nil && err != memcache.ErrCacheMiss {
+	err = c.Cache.Get("balances_asof_"+coaKey, &balancesAsOfMap)
+	if err != nil {
 		return
-	} else if err == nil {
+	} else if balancesAsOfMap != nil {
 		balancesAsOf = balancesAsOfMap[timespanAsString]
 	}
 
-	_, err = memcache.Gob.Get(c, "balances_"+coaKey+"_"+timespanAsString, &result)
+	err = c.Cache.Get("balances_"+coaKey+"_"+timespanAsString, &result)
 
-	if err == memcache.ErrCacheMiss ||
+	if (result == nil || len(result) == 0) ||
 		(err == nil && (transactionsAsOf != balancesAsOf || balancesAsOf.IsZero())) {
 
 		accountKeys, accounts, err := Accounts(c, coaKey, nil)
@@ -697,7 +680,7 @@ func Balances(c appengine.Context, coaKey string, from, to time.Time, accountFil
 		}
 
 		var transactions []*Transaction
-		if _, _, err = db.GetAll(c, "Transaction", coaKey, &transactions, filter, nil); err != nil {
+		if _, _, err = c.Db.GetAll("Transaction", coaKey, &transactions, filter, nil); err != nil {
 			return nil, err
 		}
 
@@ -725,22 +708,14 @@ func Balances(c appengine.Context, coaKey string, from, to time.Time, accountFil
 			}
 		}
 
-		item := &memcache.Item{
-			Key:    "balances_" + coaKey + "_" + timespanAsString,
-			Object: result,
-		}
-		if err = memcache.Gob.Set(c, item); err != nil {
+		if err = c.Cache.Set("balances_"+coaKey+"_"+timespanAsString, result); err != nil {
 			return nil, err
 		}
 		if balancesAsOfMap == nil {
 			balancesAsOfMap = map[string]time.Time{}
 		}
 		balancesAsOfMap[timespanAsString] = transactionsAsOf
-		item = &memcache.Item{
-			Key:    "balances_asof_" + coaKey,
-			Object: balancesAsOfMap,
-		}
-		if err = memcache.Gob.Set(c, item); err != nil {
+		if err = c.Cache.Set("balances_asof_"+coaKey, balancesAsOfMap); err != nil {
 			return nil, err
 		}
 	} else if err != nil {
@@ -762,8 +737,8 @@ func Balances(c appengine.Context, coaKey string, from, to time.Time, accountFil
 	return result, nil
 }
 
-func accountKeyWithNumber(c appengine.Context, number, coa string) (db.Key, error) {
-	if keys, _, err := db.GetAll(c, "Account", coa, nil, db.M{"Number = ": number}, nil); err != nil {
+func accountKeyWithNumber(c context.Context, number, coa string) (db.Key, error) {
+	if keys, _, err := c.Db.GetAll("Account", coa, nil, db.M{"Number = ": number}, nil); err != nil {
 		return db.Key{}, err
 	} else if len(keys) == 0 {
 		return db.Key{}, nil

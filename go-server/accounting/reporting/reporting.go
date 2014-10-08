@@ -1,18 +1,19 @@
 package reporting
 
 import (
-	"appengine"
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting"
+	"github.com/mcesarhm/geek-accounting/go-server/context"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"github.com/mcesarhm/geek-accounting/go-server/util"
+	//"log"
 	"math"
 	"strings"
 	"time"
 )
 
-func Balance(c appengine.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
+func Balance(c context.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
 	from := time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC)
 	to, err := time.Parse(time.RFC3339, m["at"]+"T00:00:00Z")
 	if err != nil {
@@ -29,7 +30,7 @@ func Balance(c appengine.Context, m map[string]string, _ core.UserKey) (result i
 	return
 }
 
-func Journal(c appengine.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
+func Journal(c context.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
 
 	from, err := time.Parse(time.RFC3339, m["from"]+"T00:00:00Z")
 	if err != nil {
@@ -87,7 +88,7 @@ func Journal(c appengine.Context, m map[string]string, _ core.UserKey) (result i
 	return
 }
 
-func Ledger(c appengine.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
+func Ledger(c context.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
 
 	from, err := time.Parse(time.RFC3339, m["from"]+"T00:00:00Z")
 	if err != nil {
@@ -168,7 +169,7 @@ func Ledger(c appengine.Context, m map[string]string, _ core.UserKey) (result in
 	return
 }
 
-func IncomeStatement(c appengine.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
+func IncomeStatement(c context.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
 	from, err := time.Parse(time.RFC3339, m["from"]+"T00:00:00Z")
 	if err != nil {
 		return

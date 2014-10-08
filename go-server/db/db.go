@@ -1,18 +1,26 @@
 package db
 
 import (
-	"appengine"
 	"appengine/datastore"
-	"appengine/memcache"
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/util"
 	//"log"
 	"reflect"
-	"sort"
-	"strconv"
 	"strings"
 	"time"
 )
+
+type Db interface {
+	Get(item interface{}, keyAsString string) (interface{}, error)
+	GetAll(kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string) (Keys, interface{}, error)
+	GetAllWithLimit(kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string, limit int) (Keys, interface{}, error)
+	GetAllFromCache(kind string, ancestor Key, items interface{}, filteredItems interface{}, filters map[string]interface{}, order []string, cacheKey string) (Keys, interface{}, error)
+	Save(item interface{}, kind string, ancestor string, param map[string]string) (key Key, err error)
+	Delete(Key) error
+	Execute(func() error) error
+	DecodeKey(string) (Key, error)
+	NewStringKey(kind, key string) Key
+}
 
 type M map[string]interface{}
 
@@ -22,11 +30,6 @@ type Keys []*datastore.Key
 
 func NewNilKey() Key {
 	return Key{nil}
-}
-
-func DecodeKey(keyAsString string) (Key, error) {
-	k, err := datastore.DecodeKey(keyAsString)
-	return Key{k}, err
 }
 
 func (key Key) String() string {
@@ -87,195 +90,8 @@ func (identifiable *Identifiable) SetKey(key Key) {
 	return
 }
 
-func Get(c appengine.Context, item interface{}, keyAsString string) (result interface{}, err error) {
-	key, err := datastore.DecodeKey(keyAsString)
-	if err != nil {
-		return
-	}
-	err = datastore.Get(c, key, item)
-	if err != nil {
-		return
-	}
-	identifier := item.(Identifier)
-	identifier.SetKey(Key{key})
-	result = item
-	return
-}
-
-func GetAll(c appengine.Context, kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string) (Keys, interface{}, error) {
-	return GetAllWithLimit(c, kind, ancestor, items, filters, orderKeys, 0)
-}
-
-func GetAllWithLimit(c appengine.Context, kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string, limit int) (Keys, interface{}, error) {
-	q := datastore.NewQuery(kind)
-	if len(ancestor) > 0 {
-		ancestorKey, err := datastore.DecodeKey(ancestor)
-		if err != nil {
-			return nil, nil, err
-		}
-		q = q.Ancestor(ancestorKey)
-	}
-	if orderKeys != nil {
-		for _, o := range orderKeys {
-			q = q.Order(o)
-		}
-	}
-	if filters != nil {
-		for k, v := range filters {
-			q = q.Filter(k, v)
-		}
-	}
-	if items == nil {
-		q = q.KeysOnly()
-	}
-	if limit > 0 {
-		q = q.Limit(limit)
-	}
-	keys, err := q.GetAll(c, items)
-	if items != nil {
-		v := reflect.ValueOf(items).Elem()
-		for i := 0; i < v.Len(); i++ {
-			ptr := v.Index(i)
-			if ptr.Kind() != reflect.Ptr {
-				ptr = ptr.Addr()
-			}
-			identifier := ptr.Interface().(Identifier)
-			identifier.SetKey(Key{keys[i]})
-		}
-	}
-	return keys, items, err
-}
-
-func Save(c appengine.Context, item interface{}, kind string, ancestor string, param map[string]string) (key Key, err error) {
-	if _, ok := item.(ValidationMessager); ok {
-		vm := item.(ValidationMessager).ValidationMessage(c, param)
-		if len(vm) > 0 {
-			return Key{}, fmt.Errorf(vm)
-		}
-	}
-	var ancestorKey *datastore.Key
-	if len(ancestor) > 0 {
-		ancestorKey, err = datastore.DecodeKey(ancestor)
-		if err != nil {
-			return
-		}
-	}
-	identifier := item.(Identifier)
-	if !identifier.GetKey().IsNil() {
-		key = identifier.GetKey()
-	} else {
-		key = Key{datastore.NewIncompleteKey(c, kind, ancestorKey)}
-	}
-	key.DsKey, err = datastore.Put(c, key.DsKey, item)
-	if err != nil {
-		return
-	}
-	if !key.IsNil() {
-		identifier.SetKey(key)
-	}
-
-	return
-}
-
-func Delete(c appengine.Context, key Key) error {
-	return datastore.Delete(c, key.DsKey)
-}
-
 type ValidationMessager interface {
-	ValidationMessage(appengine.Context, map[string]string) string
-}
-
-func GetAllFromCache(c appengine.Context, kind string, ancestor Key, items interface{}, filteredItems interface{}, filters map[string]interface{}, order []string, cacheKey string) (Keys, interface{}, error) {
-	var arr []interface{}
-	var keys []*datastore.Key
-	_, err := memcache.Gob.Get(c, cacheKey, &arr)
-	if err == memcache.ErrCacheMiss {
-		q := datastore.NewQuery(kind)
-		if ancestor.DsKey != nil {
-			q = q.Ancestor(ancestor.DsKey)
-		}
-		if keys, err = q.GetAll(c, items); err != nil {
-			return nil, nil, err
-		}
-		itemsValue := reflect.Indirect(reflect.ValueOf(items))
-		items = itemsValue.Interface()
-		nextKey := cacheKey
-		nextChunk := 0
-		i := 0
-		for {
-			chunkSize := util.Min(MaxItemsPerMemcacheEntry, len(keys)-i)
-			keysChunk := make(Keys, chunkSize)
-			itemsChunk := reflect.MakeSlice(itemsValue.Type(), chunkSize, chunkSize)
-			for j := 0; j < chunkSize; j++ {
-				keysChunk[j] = keys[i+j]
-				itemsChunk.Index(j).Set(itemsValue.Index(i + j))
-			}
-			if i+chunkSize >= len(keys) {
-				nextKey = ""
-			} else {
-				nextKey = strings.Split(cacheKey, "|")[0] + "|" + strconv.Itoa(nextChunk+1)
-			}
-			chunkArr := []interface{}{keysAsStrings(keysChunk), itemsChunk.Interface(), nextKey}
-			memcacheItem := &memcache.Item{
-				Key:    cacheKey,
-				Object: chunkArr,
-			}
-			if err = memcache.Gob.Set(c, memcacheItem); err != nil {
-				return nil, nil, err
-			}
-			if nextChunk == 0 {
-				arr = chunkArr
-			}
-			if len(nextKey) == 0 {
-				break
-			}
-			nextChunk++
-			cacheKey = strings.Split(cacheKey, "|")[0] + "|" + strconv.Itoa(nextChunk)
-			i += MaxItemsPerMemcacheEntry
-		}
-	} else if err != nil {
-		return nil, nil, err
-	}
-	keys = []*datastore.Key{}
-	for {
-		chunkKeys, err := stringsAsKeys(arr[0].([]string))
-		if err != nil {
-			return nil, nil, err
-		}
-		if filters == nil {
-			itemsValue := reflect.ValueOf(arr[1])
-			resultItems := reflect.ValueOf(filteredItems)
-			for i := 0; i < itemsValue.Len(); i++ {
-				resultItems = reflect.Append(resultItems, itemsValue.Index(i))
-			}
-			filteredItems = resultItems.Interface()
-		} else {
-			if chunkKeys, filteredItems, err = filter(chunkKeys, arr[1], filters, filteredItems); err != nil {
-				return nil, nil, err
-			}
-		}
-		for i := 0; i < len(chunkKeys); i++ {
-			keys = append(keys, chunkKeys[i])
-		}
-		if len(arr[2].(string)) == 0 {
-			break
-		}
-		if _, err := memcache.Gob.Get(c, arr[2].(string), &arr); err != nil {
-			return nil, nil, err
-		}
-	}
-	items = filteredItems
-	if order != nil {
-		sort.Sort(ByFields{keys, reflect.ValueOf(items), order})
-	}
-
-	return keys, items, nil
-}
-
-func Execute(c appengine.Context, f func() error) error {
-	return datastore.RunInTransaction(c, func(appengine.Context) (err error) {
-		return f()
-	}, nil)
+	ValidationMessage(Db, map[string]string) string
 }
 
 func keysAsStrings(keys Keys) []string {

@@ -1,14 +1,14 @@
 package accounting_test
 
 import (
-	"appengine"
 	"appengine/aetest"
 	"appengine/datastore"
-	"appengine/memcache"
 	"encoding/gob"
 	_ "fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting/reporting"
+	"github.com/mcesarhm/geek-accounting/go-server/cache"
+	"github.com/mcesarhm/geek-accounting/go-server/context"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"testing"
@@ -22,12 +22,23 @@ func init() {
 	gob.Register(([]interface{})(nil))
 }
 
+func newContext(c *context.Context) (aetest.Context, error) {
+	ac, err := aetest.NewContext(nil)
+	if err != nil {
+		return nil, err
+	}
+	c.Db = db.NewAppengineDb(ac)
+	c.Cache = cache.NewAppengineCache(ac)
+	return ac, nil
+}
+
 func TestSaveChartOfAccounts(t *testing.T) {
-	c, err := aetest.NewContext(nil)
+	c := context.Context{}
+	ac, err := newContext(&c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer ac.Close()
 	var coa *accounting.ChartOfAccounts
 	if coa, err = saveChartOfAccounts(c); err != nil {
 		t.Fatal(err)
@@ -50,11 +61,12 @@ func TestSaveChartOfAccounts(t *testing.T) {
 }
 
 func TestSaveAccount(t *testing.T) {
-	c, err := aetest.NewContext(nil)
+	c := context.Context{}
+	ac, err := newContext(&c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer ac.Close()
 	var coa *accounting.ChartOfAccounts
 	if coa, err = saveChartOfAccounts(c); err != nil {
 		t.Fatal(err)
@@ -83,11 +95,12 @@ func TestSaveAccount(t *testing.T) {
 }
 
 func TestSaveTransaction(t *testing.T) {
-	c, err := aetest.NewContext(nil)
+	c := context.Context{}
+	ac, err := newContext(&c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer ac.Close()
 
 	var coa *accounting.ChartOfAccounts
 	if coa, err = saveChartOfAccounts(c); err != nil {
@@ -127,11 +140,12 @@ func TestSaveTransaction(t *testing.T) {
 }
 
 func TestJournal(t *testing.T) {
-	c, err := aetest.NewContext(nil)
+	c := context.Context{}
+	ac, err := newContext(&c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer ac.Close()
 
 	var coa *accounting.ChartOfAccounts
 	if coa, err = saveChartOfAccounts(c); err != nil {
@@ -186,11 +200,12 @@ func TestJournal(t *testing.T) {
 }
 
 func TestLedger(t *testing.T) {
-	c, err := aetest.NewContext(nil)
+	c := context.Context{}
+	ac, err := newContext(&c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer ac.Close()
 
 	var coa *accounting.ChartOfAccounts
 	if coa, err = saveChartOfAccounts(c); err != nil {
@@ -217,13 +232,14 @@ func TestLedger(t *testing.T) {
 	}
 	if len(ledger["entries"].([]interface{})) != 1 {
 		t.Error("Ledger must have one entry")
-	}
-	entry := ledger["entries"].([]interface{})[0].(map[string]interface{})
-	if entry["counterpart"].(map[string]interface{})["number"] != "2" {
-		t.Error("Counterpart must be account #2")
-	}
-	if entry["balance"] != 1.0 {
-		t.Error("Entry's balance must be 1")
+	} else {
+		entry := ledger["entries"].([]interface{})[0].(map[string]interface{})
+		if entry["counterpart"].(map[string]interface{})["number"] != "2" {
+			t.Error("Counterpart must be account #2")
+		}
+		if entry["balance"] != 1.0 {
+			t.Error("Entry's balance must be 1")
+		}
 	}
 	if ledger["balance"] != 0.0 {
 		t.Error("Ledger's balance must be 0")
@@ -238,13 +254,14 @@ func TestLedger(t *testing.T) {
 	}
 	if len(ledger["entries"].([]interface{})) != 1 {
 		t.Error("Ledger must have one entry")
-	}
-	entry = ledger["entries"].([]interface{})[0].(map[string]interface{})
-	if entry["counterpart"].(map[string]interface{})["number"] != "2" {
-		t.Error("Counterpart must be account #2")
-	}
-	if entry["balance"] != 1.0 {
-		t.Error("Entry's balance must be 1")
+	} else {
+		entry := ledger["entries"].([]interface{})[0].(map[string]interface{})
+		if entry["counterpart"].(map[string]interface{})["number"] != "2" {
+			t.Error("Counterpart must be account #2")
+		}
+		if entry["balance"] != 1.0 {
+			t.Error("Entry's balance must be 1")
+		}
 	}
 	if ledger["balance"] != 0.0 {
 		t.Error("Ledger's balance must be 0")
@@ -280,11 +297,12 @@ func TestLedger(t *testing.T) {
 }
 
 func TestBalance(t *testing.T) {
-	c, err := aetest.NewContext(nil)
+	c := context.Context{}
+	ac, err := newContext(&c)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer c.Close()
+	defer ac.Close()
 
 	var coa *accounting.ChartOfAccounts
 	if coa, err = saveChartOfAccounts(c); err != nil {
@@ -367,7 +385,7 @@ func TestBalance(t *testing.T) {
 	if balance[1]["value"] != 2.0 {
 		t.Error("Balance's value must be 2")
 	}
-	if err = memcache.Flush(c); err != nil {
+	if err = c.Cache.Flush(); err != nil {
 		t.Fatal(err)
 	}
 	if tx, err = saveTransaction(c, coa, "2", "1", tx.Key.Encode()); err != nil {
@@ -416,7 +434,7 @@ func TestBalance(t *testing.T) {
 	}
 }
 
-func saveChartOfAccounts(c appengine.Context) (*accounting.ChartOfAccounts, error) {
+func saveChartOfAccounts(c context.Context) (*accounting.ChartOfAccounts, error) {
 	if obj, err := accounting.SaveChartOfAccounts(c, map[string]interface{}{"name": "coa"}, nil, core.NewNilUserKey()); err != nil {
 		return nil, err
 	} else {
@@ -425,7 +443,7 @@ func saveChartOfAccounts(c appengine.Context) (*accounting.ChartOfAccounts, erro
 	return nil, nil
 }
 
-func saveAccount(c appengine.Context, coa *accounting.ChartOfAccounts, number, name string, tags []string) (*accounting.Account, error) {
+func saveAccount(c context.Context, coa *accounting.ChartOfAccounts, number, name string, tags []string) (*accounting.Account, error) {
 	m := map[string]interface{}{"number": number, "name": name}
 	for _, t := range tags {
 		m[t] = true
@@ -438,7 +456,7 @@ func saveAccount(c appengine.Context, coa *accounting.ChartOfAccounts, number, n
 	return nil, nil
 }
 
-func saveTransaction(c appengine.Context, coa *accounting.ChartOfAccounts, a1, a2, tx string) (*accounting.Transaction, error) {
+func saveTransaction(c context.Context, coa *accounting.ChartOfAccounts, a1, a2, tx string) (*accounting.Transaction, error) {
 	txMap := map[string]interface{}{
 		"debits":  []interface{}{map[string]interface{}{"account": a1, "value": 1.0}},
 		"credits": []interface{}{map[string]interface{}{"account": a2, "value": 1.0}},

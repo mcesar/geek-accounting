@@ -4,8 +4,7 @@ import (
 	"crypto/sha1"
 	"fmt"
 	//"log"
-	"appengine"
-	"appengine/datastore"
+	"github.com/mcesarhm/geek-accounting/go-server/context"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"strings"
 )
@@ -24,6 +23,10 @@ func (key UserKey) UnmarshalJSON(b []byte) error {
 	return db.Key(key).UnmarshalJSON(b)
 }
 
+func (key UserKey) Encode() string {
+	return db.Key(key).Encode()
+}
+
 type User struct {
 	db.Identifiable
 	User     string `json:"user"`
@@ -31,7 +34,7 @@ type User struct {
 	Password string `json:"-"`
 }
 
-func (u *User) ValidationMessage(_ appengine.Context, m map[string]string) string {
+func (u *User) ValidationMessage(_ context.Context, _ map[string]string) string {
 	if len(strings.TrimSpace(u.User)) == 0 {
 		return "The login must be informed"
 	}
@@ -41,15 +44,14 @@ func (u *User) ValidationMessage(_ appengine.Context, m map[string]string) strin
 	return ""
 }
 
-func InitUserManagement(c appengine.Context) (err error) {
+func InitUserManagement(c context.Context) (err error) {
 	var user *User
 	err, user, _ = userByLogin(c, "admin", true)
 	if err != nil {
 		return
 	}
 	if user == nil {
-		key := datastore.NewIncompleteKey(c, "User", realm(c))
-		_, err = datastore.Put(c, key, &User{User: "admin", Password: hash("admin")})
+		_, err = c.Db.Save(&User{User: "admin", Password: hash("admin")}, "User", realm(c.Db), nil)
 		if err != nil {
 			return
 		}
@@ -57,20 +59,20 @@ func InitUserManagement(c appengine.Context) (err error) {
 	return
 }
 
-func Login(c appengine.Context, login, password string) (error, bool, *datastore.Key) {
+func Login(c context.Context, login, password string) (error, bool, UserKey) {
 	err, user, key := userByLogin(c, login, false)
 	if err != nil {
-		return err, false, nil
+		return err, false, UserKey{}
 	}
 	if user == nil || user.Password != hash(password) {
-		return nil, false, nil
+		return nil, false, UserKey{}
 	}
 	return nil, true, key
 }
 
-func ChangePassword(c appengine.Context, m map[string]interface{}, _ map[string]string, userKey UserKey) (item interface{}, err error) {
+func ChangePassword(c context.Context, m map[string]interface{}, _ map[string]string, userKey UserKey) (item interface{}, err error) {
 	user := User{}
-	err = datastore.Get(c, userKey.DsKey, &user)
+	_, err = c.Db.Get(&user, userKey.Encode())
 	if err != nil {
 		return
 	}
@@ -78,20 +80,20 @@ func ChangePassword(c appengine.Context, m map[string]interface{}, _ map[string]
 		return nil, fmt.Errorf("Wrong old password")
 	}
 	user.Password = hash(m["newPassword"].(string))
-	_, err = datastore.Put(c, userKey.DsKey, &user)
+	_, err = c.Db.Save(&user, "User", realm(c.Db), nil)
 	return
 }
 
-func AllUsers(c appengine.Context, _ map[string]string, _ UserKey) (interface{}, error) {
-	users, _, err := db.GetAll(c, "User", realm(c).Encode(), &[]User{}, nil, []string{"User"})
+func AllUsers(c context.Context, _ map[string]string, _ UserKey) (interface{}, error) {
+	users, _, err := c.Db.GetAll("User", realm(c.Db), &[]User{}, nil, []string{"User"})
 	return users, err
 }
 
-func GetUser(c appengine.Context, param map[string]string, _ UserKey) (interface{}, error) {
-	return db.Get(c, &User{}, param["user"])
+func GetUser(c context.Context, param map[string]string, _ UserKey) (interface{}, error) {
+	return c.Db.Get(&User{}, param["user"])
 }
 
-func SaveUser(c appengine.Context, m map[string]interface{}, param map[string]string, userKey UserKey) (item interface{}, err error) {
+func SaveUser(c context.Context, m map[string]interface{}, param map[string]string, userKey UserKey) (item interface{}, err error) {
 
 	user := &User{
 		User: m["user"].(string),
@@ -99,13 +101,13 @@ func SaveUser(c appengine.Context, m map[string]interface{}, param map[string]st
 	}
 
 	if userKeyAsString, ok := param["user"]; ok {
-		user.Key, err = db.DecodeKey(userKeyAsString)
+		user.Key, err = c.Db.DecodeKey(userKeyAsString)
 		if err != nil {
 			return
 		}
 		if password, ok := m["password"]; !ok || len(password.(string)) == 0 {
 			var u User
-			err = datastore.Get(c, user.Key.DsKey, &u)
+			_, err = c.Db.Get(&u, userKeyAsString)
 			if err != nil {
 				return
 			}
@@ -117,7 +119,7 @@ func SaveUser(c appengine.Context, m map[string]interface{}, param map[string]st
 		user.Password = hash(m["password"].(string))
 	}
 
-	if user.Key, err = db.Save(c, user, "User", realm(c).Encode(), param); err != nil {
+	if user.Key, err = c.Db.Save(user, "User", realm(c.Db), param); err != nil {
 		return
 	}
 
@@ -126,27 +128,21 @@ func SaveUser(c appengine.Context, m map[string]interface{}, param map[string]st
 	return
 }
 
-func DeleteUser(c appengine.Context, m map[string]interface{}, param map[string]string, userKey UserKey) (_ interface{}, err error) {
-
-	key, err := datastore.DecodeKey(param["user"])
-	if err != nil {
-		return
+func DeleteUser(c context.Context, m map[string]interface{}, param map[string]string, userKey UserKey) (_ interface{}, err error) {
+	if key, err := c.Db.DecodeKey(param["user"]); err != nil {
+		return nil, err
+	} else {
+		return nil, c.Db.Delete(key)
 	}
-
-	err = datastore.Delete(c, key)
-
-	return
-
 }
 
 func hash(s string) string {
 	return fmt.Sprintf("%x", sha1.New().Sum([]byte(s)))
 }
 
-func userByLogin(c appengine.Context, login string, init bool) (err error, user *User, key *datastore.Key) {
-	q := datastore.NewQuery("User").Ancestor(realm(c)).Filter("User = ", login)
+func userByLogin(c context.Context, login string, init bool) (err error, user *User, key UserKey) {
 	var users []User
-	keys, err := q.GetAll(c, &users)
+	keys, _, err := c.Db.GetAll("User", realm(c.Db), &users, map[string]interface{}{"User = ": login}, nil)
 	if err != nil {
 		return
 	}
@@ -155,7 +151,7 @@ func userByLogin(c appengine.Context, login string, init bool) (err error, user 
 			if err = InitUserManagement(c); err != nil {
 				return
 			}
-			keys, err = q.GetAll(c, &users)
+			keys, _, err = c.Db.GetAll("User", realm(c.Db), &users, map[string]interface{}{"User = ": login}, nil)
 			if err != nil {
 				return
 			}
@@ -163,10 +159,10 @@ func userByLogin(c appengine.Context, login string, init bool) (err error, user 
 		return
 	}
 	user = &users[0]
-	key = keys[0]
+	key = UserKey(keys.KeyAt(0))
 	return
 }
 
-func realm(c appengine.Context) *datastore.Key {
-	return datastore.NewKey(c, "User", "default", 0, nil)
+func realm(db db.Db) string {
+	return db.NewStringKey("User", "default").Encode()
 }
