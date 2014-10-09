@@ -34,7 +34,7 @@ type User struct {
 	Password string `json:"-"`
 }
 
-func (u *User) ValidationMessage(_ context.Context, _ map[string]string) string {
+func (u *User) ValidationMessage(_ db.Db, _ map[string]string) string {
 	if len(strings.TrimSpace(u.User)) == 0 {
 		return "The login must be informed"
 	}

@@ -20,7 +20,7 @@ type ChartOfAccounts struct {
 	AsOf                    time.Time    `json:"timestamp"`
 }
 
-func (coa *ChartOfAccounts) ValidationMessage(_ context.Context, _ map[string]string) string {
+func (coa *ChartOfAccounts) ValidationMessage(_ db.Db, _ map[string]string) string {
 	if len(strings.TrimSpace(coa.Name)) == 0 {
 		return "The name must be informed"
 	}
@@ -56,7 +56,7 @@ var nonInheritedProperties = map[string]string{
 	"synthetic":     "",
 }
 
-func (account *Account) ValidationMessage(c context.Context, param map[string]string) string {
+func (account *Account) ValidationMessage(db db.Db, param map[string]string) string {
 	if len(strings.TrimSpace(account.Number)) == 0 {
 		return "The number must be informed"
 	}
@@ -84,12 +84,12 @@ func (account *Account) ValidationMessage(c context.Context, param map[string]st
 	if count > 1 {
 		return "Only one income statement attribute is allowed"
 	}
-	coaKey, err := c.Db.DecodeKey(param["coa"])
+	coaKey, err := db.DecodeKey(param["coa"])
 	if err != nil {
 		return err.Error()
 	}
 	if account.Key.IsZero() {
-		if key, err := accountKeyWithNumber(c, account.Number, param["coa"]); err != nil {
+		if key, err := accountKeyWithNumber(db, account.Number, param["coa"]); err != nil {
 			return err.Error()
 		} else if !key.IsZero() {
 			return "An account with this number already exists"
@@ -97,7 +97,7 @@ func (account *Account) ValidationMessage(c context.Context, param map[string]st
 	}
 	if !account.Parent.IsZero() {
 		var parent Account
-		if _, err := c.Db.Get(&parent, account.Parent.Encode()); err != nil {
+		if _, err := db.Get(&parent, account.Parent.Encode()); err != nil {
 			return err.Error()
 		}
 		if !strings.HasPrefix(account.Number, parent.Number) {
@@ -152,7 +152,7 @@ type Entry struct {
 	Value   float64 `json:"value"`
 }
 
-func (transaction *Transaction) ValidationMessage(c context.Context, param map[string]string) string {
+func (transaction *Transaction) ValidationMessage(db db.Db, param map[string]string) string {
 	if len(transaction.Debits) == 0 {
 		return "At least one debit must be informed"
 	}
@@ -168,7 +168,7 @@ func (transaction *Transaction) ValidationMessage(c context.Context, param map[s
 	ev := func(arr []Entry) (string, float64) {
 		sum := 0.0
 		for _, e := range arr {
-			if m := e.ValidationMessage(c, param); len(m) > 0 {
+			if m := e.ValidationMessage(db, param); len(m) > 0 {
 				return m, 0.0
 			}
 			sum += e.Value
@@ -225,12 +225,12 @@ func (transaction *Transaction) incrementValue(lookupAccount func(db.Key) *Accou
 	f(transaction.Credits, (*Account).Credit)
 }
 
-func (entry *Entry) ValidationMessage(c context.Context, param map[string]string) string {
+func (entry *Entry) ValidationMessage(db db.Db, param map[string]string) string {
 	if entry.Account.IsZero() {
 		return "The account must be informed for each entry"
 	}
 	var account = new(Account)
-	if _, err := c.Db.Get(account, entry.Account.Encode()); err != nil {
+	if _, err := db.Get(account, entry.Account.Encode()); err != nil {
 		return err.Error()
 	}
 	if account == nil {
@@ -239,7 +239,7 @@ func (entry *Entry) ValidationMessage(c context.Context, param map[string]string
 	if !util.Contains(account.Tags, "analytic") {
 		return "The account must be analytic"
 	}
-	coaKey, err := c.Db.DecodeKey(param["coa"])
+	coaKey, err := db.DecodeKey(param["coa"])
 	if err != nil {
 		return err.Error()
 	}
@@ -457,7 +457,7 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 		result = make([]Entry, len(entriesMapArray))
 		for i := 0; i < len(entriesMapArray); i++ {
 			entryMap := entriesMapArray[i].(map[string]interface{})
-			if key, err := accountKeyWithNumber(c, entryMap["account"].(string), param["coa"]); err != nil {
+			if key, err := accountKeyWithNumber(c.Db, entryMap["account"].(string), param["coa"]); err != nil {
 				return nil, err
 			} else if key.IsZero() {
 				return nil, fmt.Errorf("Account '%v' not found", entryMap["account"])
@@ -737,8 +737,8 @@ func Balances(c context.Context, coaKey string, from, to time.Time, accountFilte
 	return result, nil
 }
 
-func accountKeyWithNumber(c context.Context, number, coa string) (db.Key, error) {
-	if keys, _, err := c.Db.GetAll("Account", coa, nil, db.M{"Number = ": number}, nil); err != nil {
+func accountKeyWithNumber(d db.Db, number, coa string) (db.Key, error) {
+	if keys, _, err := d.GetAll("Account", coa, nil, db.M{"Number = ": number}, nil); err != nil {
 		return db.Key{}, err
 	} else if len(keys) == 0 {
 		return db.Key{}, nil
