@@ -11,9 +11,9 @@ import (
 
 type Db interface {
 	Get(item interface{}, keyAsString string) (interface{}, error)
-	GetAll(kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string) (Keys, interface{}, error)
-	GetAllWithLimit(kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string, limit int) (Keys, interface{}, error)
-	GetAllFromCache(kind string, ancestor Key, items interface{}, filteredItems interface{}, filters map[string]interface{}, order []string, cacheKey string) (Keys, interface{}, error)
+	GetAll(kind string, ancestor string, items interface{}, filters M, orderKeys []string) (Keys, interface{}, error)
+	GetAllWithLimit(kind string, ancestor string, items interface{}, filters M, orderKeys []string, limit int) (Keys, interface{}, error)
+	GetAllFromCache(kind string, ancestor Key, items interface{}, filteredItems interface{}, filters M, order []string, cacheKey string) (Keys, interface{}, error)
 	Save(item interface{}, kind string, ancestor string, param map[string]string) (key Key, err error)
 	Delete(Key) error
 	Execute(func() error) error

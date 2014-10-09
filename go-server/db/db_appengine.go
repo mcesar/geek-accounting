@@ -88,11 +88,11 @@ func (db AppengineDb) Get(item interface{}, keyAsString string) (result interfac
 	return
 }
 
-func (db AppengineDb) GetAll(kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string) (Keys, interface{}, error) {
+func (db AppengineDb) GetAll(kind string, ancestor string, items interface{}, filters M, orderKeys []string) (Keys, interface{}, error) {
 	return db.GetAllWithLimit(kind, ancestor, items, filters, orderKeys, 0)
 }
 
-func (db AppengineDb) GetAllWithLimit(kind string, ancestor string, items interface{}, filters map[string]interface{}, orderKeys []string, limit int) (Keys, interface{}, error) {
+func (db AppengineDb) GetAllWithLimit(kind string, ancestor string, items interface{}, filters M, orderKeys []string, limit int) (Keys, interface{}, error) {
 	q := datastore.NewQuery(kind)
 	if len(ancestor) > 0 {
 		ancestorKey, err := datastore.DecodeKey(ancestor)
@@ -132,7 +132,7 @@ func (db AppengineDb) GetAllWithLimit(kind string, ancestor string, items interf
 	return keys, items, err
 }
 
-func (db AppengineDb) GetAllFromCache(kind string, ancestor Key, items interface{}, filteredItems interface{}, filters map[string]interface{}, order []string, cacheKey string) (Keys, interface{}, error) {
+func (db AppengineDb) GetAllFromCache(kind string, ancestor Key, items interface{}, filteredItems interface{}, filters M, order []string, cacheKey string) (Keys, interface{}, error) {
 	var arr []interface{}
 	var keys []*datastore.Key
 	_, err := memcache.Gob.Get(db.c, cacheKey, &arr)
