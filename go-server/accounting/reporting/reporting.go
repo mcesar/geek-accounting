@@ -74,7 +74,7 @@ func Journal(c context.Context, m map[string]string, _ core.UserKey) (result int
 
 	for i, t := range transactions {
 		m := map[string]interface{}{
-			"_id":     transactionKeys[i],
+			"_id":     transactionKeys.KeyAt(i),
 			"date":    t.Date,
 			"memo":    t.Memo,
 			"debits":  addEntries(t.Debits),
