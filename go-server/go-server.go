@@ -11,12 +11,13 @@ import (
 	"github.com/gorilla/mux"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting/reporting"
+	"github.com/mcesarhm/geek-accounting/go-server/cache"
+	"github.com/mcesarhm/geek-accounting/go-server/context"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"strings"
 
 	"appengine"
-	"appengine/datastore"
 	//_ "appengine/remote_api"
 )
 
@@ -44,10 +45,12 @@ func init() {
 	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}/ledger", getAllHandler(reporting.Ledger)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/income-statement", getAllHandler(reporting.IncomeStatement)).Methods("GET")
 	r.HandleFunc("/_ah/warmup", func(w http.ResponseWriter, r *http.Request) {
-		if err := core.InitUserManagement(appengine.NewContext(r)); err != nil {
+		ac := appengine.NewContext(r)
+		c := newContext(ac)
+		if err := core.InitUserManagement(c); err != nil {
 			http.Error(w, "Internal error:"+err.Error(), http.StatusInternalServerError)
 		}
-		if err := accounting.UpdateSchema(appengine.NewContext(r)); err != nil {
+		if err := accounting.UpdateSchema(ac); err != nil {
 			http.Error(w, "Internal error:"+err.Error(), http.StatusInternalServerError)
 		}
 		return
@@ -58,7 +61,7 @@ func init() {
 		}
 		return
 	})
-	r.HandleFunc("/ping", errorHandler(func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error {
+	r.HandleFunc("/ping", errorHandler(func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error {
 		return nil
 	}))
 	r.HandleFunc("/password", postHandler(core.ChangePassword)).Methods("PUT")
@@ -70,13 +73,13 @@ func init() {
 	http.Handle("/", r)
 }
 
-func getAllHandler(f func(appengine.Context, map[string]string, core.UserKey) (interface{}, error)) http.HandlerFunc {
-	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error {
+func getAllHandler(f func(context.Context, map[string]string, core.UserKey) (interface{}, error)) http.HandlerFunc {
+	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error {
 		params := mux.Vars(r)
 		for k, v := range r.URL.Query() {
 			params[k] = v[0]
 		}
-		items, err := f(appengine.NewContext(r), params, core.UserKey(db.Key{userKey}))
+		items, err := f(newContext(appengine.NewContext(r)), params, userKey)
 		if err != nil {
 			return err
 		}
@@ -84,8 +87,8 @@ func getAllHandler(f func(appengine.Context, map[string]string, core.UserKey) (i
 	})
 }
 
-func postHandler(f func(appengine.Context, map[string]interface{}, map[string]string, core.UserKey) (interface{}, error)) http.HandlerFunc {
-	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error {
+func postHandler(f func(context.Context, map[string]interface{}, map[string]string, core.UserKey) (interface{}, error)) http.HandlerFunc {
+	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error {
 		/*
 			b, _ := ioutil.ReadAll(r.Body)
 			log.Println(string(b))
@@ -97,7 +100,7 @@ func postHandler(f func(appengine.Context, map[string]interface{}, map[string]st
 		}
 
 		m := req.(map[string]interface{})
-		item, err := f(appengine.NewContext(r), m, mux.Vars(r), core.UserKey(db.Key{userKey}))
+		item, err := f(newContext(appengine.NewContext(r)), m, mux.Vars(r), userKey)
 		if err != nil {
 			return badRequest{err}
 		}
@@ -108,10 +111,10 @@ func postHandler(f func(appengine.Context, map[string]interface{}, map[string]st
 	})
 }
 
-func deleteHandler(f func(appengine.Context, map[string]interface{}, map[string]string, core.UserKey) (interface{}, error)) http.HandlerFunc {
-	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error {
+func deleteHandler(f func(context.Context, map[string]interface{}, map[string]string, core.UserKey) (interface{}, error)) http.HandlerFunc {
+	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error {
 
-		_, err := f(appengine.NewContext(r), nil, mux.Vars(r), core.UserKey(db.Key{userKey}))
+		_, err := f(newContext(appengine.NewContext(r)), nil, mux.Vars(r), userKey)
 		if err != nil {
 			return badRequest{err}
 		}
@@ -127,7 +130,7 @@ type notFound struct{ error }
 // errorHandler wraps a function returning an error by handling the error and returning a http.Handler.
 // If the error is of the one of the types defined above, it is handled as described for every type.
 // If the error is of another type, it is considered as an internal error and its message is logged.
-func errorHandler(f func(w http.ResponseWriter, r *http.Request, userKey *datastore.Key) error) http.HandlerFunc {
+func errorHandler(f func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var credentials string
 		if _, ok := r.Header["Authorization"]; ok {
@@ -142,7 +145,7 @@ func errorHandler(f func(w http.ResponseWriter, r *http.Request, userKey *datast
 			return
 		}
 		arr := strings.Split(string(b), ":")
-		c := appengine.NewContext(r)
+		c := newContext(appengine.NewContext(r))
 		err, ok, userKey := core.Login(c, arr[0], arr[1])
 		if err != nil {
 			http.Error(w, "Internal error:"+err.Error(), http.StatusInternalServerError)
@@ -166,4 +169,8 @@ func errorHandler(f func(w http.ResponseWriter, r *http.Request, userKey *datast
 			http.Error(w, "Internal error:"+err.Error(), http.StatusInternalServerError)
 		}
 	}
+}
+
+func newContext(ac appengine.Context) context.Context {
+	return context.Context{Db: db.NewAppengineDb(ac), Cache: cache.NewAppengineCache(ac)}
 }

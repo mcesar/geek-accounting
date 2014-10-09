@@ -234,7 +234,7 @@ func IncomeStatement(c context.Context, m map[string]string, _ core.UserKey) (re
 	collectRoots := func(parent db.Key) {
 		for _, m := range balances {
 			account := m["account"].(*accounting.Account)
-			if (account.Parent.IsNil() && parent.IsNil()) || account.Parent.String() == parent.String() {
+			if (account.Parent.IsZero() && parent.IsZero()) || account.Parent.String() == parent.String() {
 				if util.Contains(account.Tags, "creditBalance") {
 					revenueRoots = append(revenueRoots, account)
 				} else {
@@ -244,7 +244,7 @@ func IncomeStatement(c context.Context, m map[string]string, _ core.UserKey) (re
 		}
 	}
 
-	collectRoots(db.NewNilKey())
+	collectRoots(db.NewKey())
 
 	if (len(revenueRoots) + len(expenseRoots)) == 1 {
 		parentKey := append(revenueRoots, expenseRoots...)[0].Key

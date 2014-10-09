@@ -88,14 +88,14 @@ func (account *Account) ValidationMessage(c context.Context, param map[string]st
 	if err != nil {
 		return err.Error()
 	}
-	if account.Key.IsNil() {
+	if account.Key.IsZero() {
 		if key, err := accountKeyWithNumber(c, account.Number, param["coa"]); err != nil {
 			return err.Error()
-		} else if !key.IsNil() {
+		} else if !key.IsZero() {
 			return "An account with this number already exists"
 		}
 	}
-	if !account.Parent.IsNil() {
+	if !account.Parent.IsZero() {
 		var parent Account
 		if _, err := c.Db.Get(&parent, account.Parent.Encode()); err != nil {
 			return err.Error()
@@ -210,13 +210,13 @@ func (transaction *Transaction) incrementValue(lookupAccount func(db.Key) *Accou
 	f := func(entries []Entry, f func(*Account, float64) float64) {
 		for _, e := range entries {
 			accountKey, value := e.Account, e.Value
-			for !accountKey.IsNil() {
+			for !accountKey.IsZero() {
 				account := lookupAccount(accountKey)
 				if account != nil {
 					addValue(accountKey, f(account, value))
 					accountKey = account.Parent
 				} else {
-					accountKey = db.NewNilKey()
+					accountKey = db.NewKey()
 				}
 			}
 		}
@@ -226,7 +226,7 @@ func (transaction *Transaction) incrementValue(lookupAccount func(db.Key) *Accou
 }
 
 func (entry *Entry) ValidationMessage(c context.Context, param map[string]string) string {
-	if entry.Account.IsNil() {
+	if entry.Account.IsZero() {
 		return "The account must be informed for each entry"
 	}
 	var account = new(Account)
@@ -298,7 +298,7 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 		if _, err = c.Db.Get(&a, account.Key.Encode()); err != nil {
 			return
 		}
-		if !a.Parent.IsNil() {
+		if !a.Parent.IsZero() {
 			if _, err = c.Db.Get(parent, a.Parent.Encode()); err != nil {
 				return
 			}
@@ -356,7 +356,7 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 			}
 		}
 
-		if !account.Parent.IsNil() && !isUpdate {
+		if !account.Parent.IsZero() && !isUpdate {
 			i := util.IndexOf(parent.Tags, "analytic")
 			if i != -1 {
 				parent.Tags = append(parent.Tags[:i], parent.Tags[i+1:]...)
@@ -459,7 +459,7 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 			entryMap := entriesMapArray[i].(map[string]interface{})
 			if key, err := accountKeyWithNumber(c, entryMap["account"].(string), param["coa"]); err != nil {
 				return nil, err
-			} else if key.IsNil() {
+			} else if key.IsZero() {
 				return nil, fmt.Errorf("Account '%v' not found", entryMap["account"])
 			} else {
 				result[i] = Entry{
@@ -687,7 +687,7 @@ func Balances(c context.Context, coaKey string, from, to time.Time, accountFilte
 		sort.Sort(ByDateAndAsOf(transactions))
 
 		lookupAccount := func(key db.Key) *Account {
-			if key.IsNil() {
+			if key.IsZero() {
 				return nil
 			}
 			item := resultMap[key.String()]

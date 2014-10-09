@@ -11,8 +11,8 @@ import (
 
 type UserKey db.Key
 
-func NewNilUserKey() UserKey {
-	return UserKey(db.NewNilKey())
+func NewUserKey() UserKey {
+	return UserKey(db.NewKey())
 }
 
 func (key UserKey) MarshalJSON() ([]byte, error) {

@@ -7,6 +7,7 @@ import (
 	"appengine/datastore"
 	"appengine/memcache"
 	"errors"
+	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/util"
 	"reflect"
 	"sort"
@@ -18,6 +19,58 @@ type AppengineDb struct{ c appengine.Context }
 
 func NewAppengineDb(c appengine.Context) Db {
 	return AppengineDb{c}
+}
+
+type Key struct{ DsKey *datastore.Key }
+
+type Keys []*datastore.Key
+
+func NewKey() Key {
+	return Key{nil}
+}
+
+func (key Key) String() string {
+	if key.DsKey == nil {
+		return ""
+	}
+	return key.DsKey.String()
+}
+
+func (key Key) Encode() string {
+	return key.DsKey.Encode()
+}
+
+func (key Key) Parent() Key {
+	return Key{key.DsKey.Parent()}
+}
+
+func (key Key) IsZero() bool {
+	return key.DsKey == nil
+}
+
+func (key Key) MarshalJSON() ([]byte, error) {
+	s := ""
+	if key.DsKey != nil {
+		s = key.DsKey.Encode()
+	}
+	return []byte(fmt.Sprintf("\"%v\"", s)), nil
+}
+
+func (key Key) UnmarshalJSON(b []byte) error {
+	k, err := datastore.DecodeKey(string(b)[1 : len(string(b))-1])
+	if err != nil {
+		return err
+	}
+	key.DsKey = k
+	return nil
+}
+
+func (keys Keys) KeyAt(i int) Key {
+	return Key{keys[i]}
+}
+
+func (keys Keys) Append(key Key) Keys {
+	return Keys(append(keys, key.DsKey))
 }
 
 func (db AppengineDb) Get(item interface{}, keyAsString string) (result interface{}, err error) {
@@ -132,7 +185,7 @@ func (db AppengineDb) GetAllFromCache(kind string, ancestor Key, items interface
 	}
 	keys = []*datastore.Key{}
 	for {
-		chunkKeys, err := stringsAsKeys(arr[0].([]string))
+		chunkKeys, err := stringsAsKeys(db, arr[0].([]string))
 		if err != nil {
 			return nil, nil, err
 		}
@@ -181,7 +234,7 @@ func (db AppengineDb) Save(item interface{}, kind string, ancestor string, param
 		}
 	}
 	identifier := item.(Identifier)
-	if !identifier.GetKey().IsNil() {
+	if !identifier.GetKey().IsZero() {
 		key = identifier.GetKey()
 	} else {
 		key = Key{datastore.NewIncompleteKey(db.c, kind, ancestorKey)}
@@ -190,7 +243,7 @@ func (db AppengineDb) Save(item interface{}, kind string, ancestor string, param
 	if err != nil {
 		return
 	}
-	if !key.IsNil() {
+	if !key.IsZero() {
 		identifier.SetKey(key)
 	}
 

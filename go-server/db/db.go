@@ -1,7 +1,6 @@
 package db
 
 import (
-	"appengine/datastore"
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/util"
 	//"log"
@@ -23,54 +22,6 @@ type Db interface {
 }
 
 type M map[string]interface{}
-
-type Key struct{ DsKey *datastore.Key }
-
-type Keys []*datastore.Key
-
-func NewNilKey() Key {
-	return Key{nil}
-}
-
-func (key Key) String() string {
-	if key.DsKey == nil {
-		return ""
-	}
-	return key.DsKey.String()
-}
-
-func (key Key) Encode() string {
-	return key.DsKey.Encode()
-}
-
-func (key Key) Parent() Key {
-	return Key{key.DsKey.Parent()}
-}
-
-func (key Key) IsNil() bool {
-	return key.DsKey == nil
-}
-
-func (key Key) MarshalJSON() ([]byte, error) {
-	s := ""
-	if key.DsKey != nil {
-		s = key.DsKey.Encode()
-	}
-	return []byte(fmt.Sprintf("\"%v\"", s)), nil
-}
-
-func (key Key) UnmarshalJSON(b []byte) error {
-	k, err := datastore.DecodeKey(string(b)[1 : len(string(b))-1])
-	if err != nil {
-		return err
-	}
-	key.DsKey = k
-	return nil
-}
-
-func (keys Keys) KeyAt(i int) Key {
-	return Key{keys[i]}
-}
 
 type Identifiable struct {
 	Key Key `datastore:"-" json:"_id"`
@@ -102,13 +53,13 @@ func keysAsStrings(keys Keys) []string {
 	return result
 }
 
-func stringsAsKeys(strings []string) (Keys, error) {
-	result := []*datastore.Key{}
+func stringsAsKeys(db Db, strings []string) (Keys, error) {
+	result := Keys{}
 	for _, s := range strings {
-		if key, err := datastore.DecodeKey(s); err != nil {
+		if key, err := db.DecodeKey(s); err != nil {
 			return nil, err
 		} else {
-			result = append(result, key)
+			result = result.Append(key)
 		}
 	}
 	return result, nil
