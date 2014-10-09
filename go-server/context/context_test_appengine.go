@@ -1,4 +1,5 @@
-// +build appengine AND test
+// +build appengine
+// +build test
 
 package context
 
