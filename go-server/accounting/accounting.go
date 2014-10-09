@@ -322,7 +322,7 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 
 	var retainedEarningsAccount bool
 	for k, _ := range m {
-		if k != "name" && k != "number" && k != "number" {
+		if k != "name" && k != "number" && k != "parent" {
 			if k == "retainedEarnings" {
 				retainedEarningsAccount = true
 			} else if !util.Contains(account.Tags, k) {
