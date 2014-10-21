@@ -15,7 +15,7 @@ import (
 type ChartOfAccounts struct {
 	db.Identifiable
 	Name                    string       `json:"name"`
-	RetainedEarningsAccount db.Key       `json:"retainedEarningsAccount"`
+	RetainedEarningsAccount db.CKey      `json:"retainedEarningsAccount"`
 	User                    core.UserKey `json:"user"`
 	AsOf                    time.Time    `json:"timestamp"`
 }
@@ -32,7 +32,7 @@ type Account struct {
 	Number string       `json:"number"`
 	Name   string       `json:"name"`
 	Tags   []string     `json:"tags"`
-	Parent db.Key       `json:"parent"`
+	Parent db.CKey      `json:"parent"`
 	User   core.UserKey `json:"user"`
 	AsOf   time.Time    `json:"timestamp"`
 }
@@ -148,7 +148,7 @@ type Transaction struct {
 }
 
 type Entry struct {
-	Account db.Key  `json:"account"`
+	Account db.CKey `json:"account"`
 	Value   float64 `json:"value"`
 }
 
@@ -209,14 +209,15 @@ func (transaction *Transaction) updateAccountsKeysAsString() {
 func (transaction *Transaction) incrementValue(lookupAccount func(db.Key) *Account, addValue func(db.Key, float64)) {
 	f := func(entries []Entry, f func(*Account, float64) float64) {
 		for _, e := range entries {
+			var accountKey db.Key
 			accountKey, value := e.Account, e.Value
-			for !accountKey.IsZero() {
+			for accountKey != nil && !accountKey.IsZero() {
 				account := lookupAccount(accountKey)
 				if account != nil {
 					addValue(accountKey, f(account, value))
 					accountKey = account.Parent
 				} else {
-					accountKey = db.NewKey()
+					accountKey = nil
 				}
 			}
 		}
@@ -286,9 +287,10 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 
 	if accountKeyAsString, ok := param["account"]; ok {
 		isUpdate = true
-		account.Key, err = c.Db.DecodeKey(accountKeyAsString)
-		if err != nil {
-			return
+		if k, err := c.Db.DecodeKey(accountKeyAsString); err != nil {
+			return nil, err
+		} else {
+			account.SetKey(k)
 		}
 	}
 
@@ -312,10 +314,10 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 		if err != nil {
 			return nil, err
 		}
-		if len(keys) == 0 {
+		if keys.Len() == 0 {
 			return nil, fmt.Errorf("Parent not found: %v", parentNumber)
 		}
-		account.Parent = keys.KeyAt(0)
+		account.Parent = keys.KeyAt(0).(db.CKey)
 		parent = &accounts[0]
 		delete(m, "parent")
 	}
@@ -350,7 +352,7 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 			if _, err = c.Db.Get(coa, param["coa"]); err != nil {
 				return
 			}
-			coa.RetainedEarningsAccount = accountKey
+			coa.RetainedEarningsAccount = accountKey.(db.CKey)
 			if _, err = c.Db.Save(coa, "ChartOfAccounts", "", param); err != nil {
 				return
 			}
@@ -396,7 +398,7 @@ func DeleteAccount(c context.Context, m map[string]interface{}, param map[string
 		if keys, _, err := c.Db.GetAll(kind, param["coa"], nil, db.M{property: key}, nil); err != nil {
 			return err
 		} else {
-			if len(keys) > 0 {
+			if keys.Len() > 0 {
 				return fmt.Errorf(errorMessage)
 			}
 		}
@@ -463,7 +465,7 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 				return nil, fmt.Errorf("Account '%v' not found", entryMap["account"])
 			} else {
 				result[i] = Entry{
-					Account: key,
+					Account: key.(db.CKey),
 					Value:   util.Round(entryMap["value"].(float64)*100) / 100}
 			}
 		}
@@ -480,16 +482,18 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 	var transactionKey db.Key
 	isUpdate := false
 	if _, ok := param["transaction"]; ok {
-		transaction.Key, err = c.Db.DecodeKey(param["transaction"])
-		if err != nil {
-			return
+		if k, err := c.Db.DecodeKey(param["transaction"]); err != nil {
+			return nil, err
+		} else {
+			transaction.SetKey(k)
 		}
 		isUpdate = true
 	}
 
-	transactionKey, err = c.Db.Save(transaction, "Transaction", param["coa"], param)
-	if err != nil {
-		return
+	if k, err := c.Db.Save(transaction, "Transaction", param["coa"], param); err != nil {
+		return nil, err
+	} else {
+		transactionKey = k
 	}
 
 	if isUpdate {
@@ -508,7 +512,7 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 
 	err = c.Cache.Delete("transactions_" + coaKey.Encode())
 
-	transaction.Key = transactionKey
+	transaction.SetKey(transactionKey)
 	item = transaction
 
 	return
@@ -599,7 +603,7 @@ func TransactionsWithValue(c context.Context, coaKey string, account *Account, f
 		t.Value += value
 	}
 	for i, t = range transactions {
-		t.Key = keys.KeyAt(i)
+		t.SetKey(keys.KeyAt(i))
 		t.incrementValue(lookupAccount, addValue)
 	}
 	return
@@ -672,7 +676,7 @@ func Balances(c context.Context, coaKey string, from, to time.Time, accountFilte
 			filter["Date <="] = to
 			result = []db.M{}
 			for i, a := range accounts {
-				a.Key = accountKeys.KeyAt(i)
+				a.SetKey(accountKeys.KeyAt(i))
 				item := db.M{"account": a, "value": 0.0}
 				result = append(result, item)
 				resultMap[accountKeys.KeyAt(i).String()] = item
@@ -739,9 +743,9 @@ func Balances(c context.Context, coaKey string, from, to time.Time, accountFilte
 
 func accountKeyWithNumber(d db.Db, number, coa string) (db.Key, error) {
 	if keys, _, err := d.GetAll("Account", coa, nil, db.M{"Number = ": number}, nil); err != nil {
-		return db.Key{}, err
-	} else if len(keys) == 0 {
-		return db.Key{}, nil
+		return d.NewKey(), err
+	} else if keys.Len() == 0 {
+		return d.NewKey(), nil
 	} else {
 		return keys.KeyAt(0), nil
 	}

@@ -19,12 +19,30 @@ type Db interface {
 	Execute(func() error) error
 	DecodeKey(string) (Key, error)
 	NewStringKey(kind, key string) Key
+	NewKey() Key
+	NewKeys() Keys
+}
+
+type Key interface {
+	String() string
+	Encode() string
+	Parent() Key
+	IsZero() bool
+	MarshalJSON() ([]byte, error)
+	UnmarshalJSON([]byte) error
+}
+
+type Keys interface {
+	Len() int
+	KeyAt(int) Key
+	Append(Key) Keys
+	Swap(i, j int)
 }
 
 type M map[string]interface{}
 
 type Identifiable struct {
-	Key Key `datastore:"-" json:"_id"`
+	Key CKey `datastore:"-" json:"_id"`
 }
 
 type Identifier interface {
@@ -37,7 +55,7 @@ func (identifiable *Identifiable) GetKey() Key {
 }
 
 func (identifiable *Identifiable) SetKey(key Key) {
-	identifiable.Key = key
+	identifiable.Key = key.(CKey)
 	return
 }
 
@@ -47,14 +65,14 @@ type ValidationMessager interface {
 
 func keysAsStrings(keys Keys) []string {
 	result := []string{}
-	for _, k := range keys {
-		result = append(result, k.Encode())
+	for i := 0; i < keys.Len(); i++ {
+		result = append(result, keys.KeyAt(i).Encode())
 	}
 	return result
 }
 
 func stringsAsKeys(db Db, strings []string) (Keys, error) {
-	result := Keys{}
+	result := db.NewKeys()
 	for _, s := range strings {
 		if key, err := db.DecodeKey(s); err != nil {
 			return nil, err
@@ -96,7 +114,7 @@ type ByFields struct {
 func (a ByFields) Len() int { return a.values.Len() }
 
 func (a ByFields) Swap(i, j int) {
-	a.keys[i], a.keys[j] = a.keys[j], a.keys[i]
+	a.keys.Swap(i, j)
 	swap(a.values, i, j)
 }
 
@@ -120,8 +138,8 @@ func swap(arr reflect.Value, i, j int) {
 	arr.Index(j).Set(t)
 }
 
-func filter(keys Keys, items interface{}, filters map[string]interface{}, dest interface{}) (Keys, interface{}, error) {
-	resultKeys := Keys{}
+func filter(d Db, keys Keys, items interface{}, filters map[string]interface{}, dest interface{}) (Keys, interface{}, error) {
+	resultKeys := d.NewKeys()
 	resultItems := reflect.ValueOf(dest)
 	ii := reflect.ValueOf(items)
 	for i := 0; i < ii.Len(); i++ {
@@ -129,7 +147,7 @@ func filter(keys Keys, items interface{}, filters map[string]interface{}, dest i
 		if ok, err := Matches(item.Elem().Interface(), filters); err != nil {
 			return nil, nil, err
 		} else if ok {
-			resultKeys = append(resultKeys, keys[i])
+			resultKeys = resultKeys.Append(keys.KeyAt(i))
 			resultItems = reflect.Append(resultItems, item)
 		}
 	}

@@ -9,22 +9,22 @@ import (
 	"strings"
 )
 
-type UserKey db.Key
+type UserKey db.CKey
 
 func NewUserKey() UserKey {
-	return UserKey(db.NewKey())
+	return UserKey(*new(db.CKey))
 }
 
 func (key UserKey) MarshalJSON() ([]byte, error) {
-	return db.Key(key).MarshalJSON()
+	return db.CKey(key).MarshalJSON()
 }
 
 func (key UserKey) UnmarshalJSON(b []byte) error {
-	return db.Key(key).UnmarshalJSON(b)
+	return db.CKey(key).UnmarshalJSON(b)
 }
 
 func (key UserKey) Encode() string {
-	return db.Key(key).Encode()
+	return db.CKey(key).Encode()
 }
 
 type User struct {
@@ -101,9 +101,10 @@ func SaveUser(c context.Context, m map[string]interface{}, param map[string]stri
 	}
 
 	if userKeyAsString, ok := param["user"]; ok {
-		user.Key, err = c.Db.DecodeKey(userKeyAsString)
-		if err != nil {
-			return
+		if k, err := c.Db.DecodeKey(userKeyAsString); err != nil {
+			return nil, err
+		} else {
+			user.SetKey(k)
 		}
 		if password, ok := m["password"]; !ok || len(password.(string)) == 0 {
 			var u User
@@ -119,8 +120,10 @@ func SaveUser(c context.Context, m map[string]interface{}, param map[string]stri
 		user.Password = hash(m["password"].(string))
 	}
 
-	if user.Key, err = c.Db.Save(user, "User", realm(c.Db), param); err != nil {
-		return
+	if k, err := c.Db.Save(user, "User", realm(c.Db), param); err != nil {
+		return nil, err
+	} else {
+		user.SetKey(k)
 	}
 
 	item = user
@@ -159,7 +162,7 @@ func userByLogin(c context.Context, login string, init bool) (err error, user *U
 		return
 	}
 	user = &users[0]
-	key = UserKey(keys.KeyAt(0))
+	key = UserKey(keys.KeyAt(0).(db.CKey))
 	return
 }
 

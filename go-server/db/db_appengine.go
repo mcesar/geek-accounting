@@ -21,34 +21,30 @@ func NewAppengineDb(c appengine.Context) Db {
 	return AppengineDb{c}
 }
 
-type Key struct{ DsKey *datastore.Key }
+type CKey struct{ DsKey *datastore.Key }
 
-type Keys []*datastore.Key
+type CKeys []*datastore.Key
 
-func NewKey() Key {
-	return Key{nil}
-}
-
-func (key Key) String() string {
+func (key CKey) String() string {
 	if key.DsKey == nil {
 		return ""
 	}
 	return key.DsKey.String()
 }
 
-func (key Key) Encode() string {
+func (key CKey) Encode() string {
 	return key.DsKey.Encode()
 }
 
-func (key Key) Parent() Key {
-	return Key{key.DsKey.Parent()}
+func (key CKey) Parent() Key {
+	return CKey{key.DsKey.Parent()}
 }
 
-func (key Key) IsZero() bool {
+func (key CKey) IsZero() bool {
 	return key.DsKey == nil
 }
 
-func (key Key) MarshalJSON() ([]byte, error) {
+func (key CKey) MarshalJSON() ([]byte, error) {
 	s := ""
 	if key.DsKey != nil {
 		s = key.DsKey.Encode()
@@ -56,7 +52,7 @@ func (key Key) MarshalJSON() ([]byte, error) {
 	return []byte(fmt.Sprintf("\"%v\"", s)), nil
 }
 
-func (key Key) UnmarshalJSON(b []byte) error {
+func (key CKey) UnmarshalJSON(b []byte) error {
 	k, err := datastore.DecodeKey(string(b)[1 : len(string(b))-1])
 	if err != nil {
 		return err
@@ -65,12 +61,20 @@ func (key Key) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (keys Keys) KeyAt(i int) Key {
-	return Key{keys[i]}
+func (keys CKeys) Len() int {
+	return len(keys)
 }
 
-func (keys Keys) Append(key Key) Keys {
-	return Keys(append(keys, key.DsKey))
+func (keys CKeys) KeyAt(i int) Key {
+	return CKey{keys[i]}
+}
+
+func (keys CKeys) Append(key Key) Keys {
+	return Keys(append(keys, key.(CKey).DsKey))
+}
+
+func (keys CKeys) Swap(i, j int) {
+	keys[i], keys[j] = keys[j], keys[i]
 }
 
 func (db AppengineDb) Get(item interface{}, keyAsString string) (result interface{}, err error) {
@@ -83,7 +87,7 @@ func (db AppengineDb) Get(item interface{}, keyAsString string) (result interfac
 		return
 	}
 	identifier := item.(Identifier)
-	identifier.SetKey(Key{key})
+	identifier.SetKey(CKey{key})
 	result = item
 	return
 }
@@ -126,10 +130,10 @@ func (db AppengineDb) GetAllWithLimit(kind string, ancestor string, items interf
 				ptr = ptr.Addr()
 			}
 			identifier := ptr.Interface().(Identifier)
-			identifier.SetKey(Key{keys[i]})
+			identifier.SetKey(CKey{keys[i]})
 		}
 	}
-	return keys, items, err
+	return CKeys(keys), items, err
 }
 
 func (db AppengineDb) GetAllFromCache(kind string, ancestor Key, items interface{}, filteredItems interface{}, filters M, order []string, cacheKey string) (Keys, interface{}, error) {
@@ -138,8 +142,8 @@ func (db AppengineDb) GetAllFromCache(kind string, ancestor Key, items interface
 	_, err := memcache.Gob.Get(db.c, cacheKey, &arr)
 	if err == memcache.ErrCacheMiss {
 		q := datastore.NewQuery(kind)
-		if ancestor.DsKey != nil {
-			q = q.Ancestor(ancestor.DsKey)
+		if ancestor.(CKey).DsKey != nil {
+			q = q.Ancestor(ancestor.(CKey).DsKey)
 		}
 		if keys, err = q.GetAll(db.c, items); err != nil {
 			return nil, nil, err
@@ -151,7 +155,7 @@ func (db AppengineDb) GetAllFromCache(kind string, ancestor Key, items interface
 		i := 0
 		for {
 			chunkSize := util.Min(MaxItemsPerMemcacheEntry, len(keys)-i)
-			keysChunk := make(Keys, chunkSize)
+			keysChunk := make(CKeys, chunkSize)
 			itemsChunk := reflect.MakeSlice(itemsValue.Type(), chunkSize, chunkSize)
 			for j := 0; j < chunkSize; j++ {
 				keysChunk[j] = keys[i+j]
@@ -197,12 +201,12 @@ func (db AppengineDb) GetAllFromCache(kind string, ancestor Key, items interface
 			}
 			filteredItems = resultItems.Interface()
 		} else {
-			if chunkKeys, filteredItems, err = filter(chunkKeys, arr[1], filters, filteredItems); err != nil {
+			if chunkKeys, filteredItems, err = filter(db, chunkKeys, arr[1], filters, filteredItems); err != nil {
 				return nil, nil, err
 			}
 		}
-		for i := 0; i < len(chunkKeys); i++ {
-			keys = append(keys, chunkKeys[i])
+		for i := 0; i < chunkKeys.Len(); i++ {
+			keys = append(keys, chunkKeys.KeyAt(i).(CKey).DsKey)
 		}
 		if len(arr[2].(string)) == 0 {
 			break
@@ -213,17 +217,17 @@ func (db AppengineDb) GetAllFromCache(kind string, ancestor Key, items interface
 	}
 	items = filteredItems
 	if order != nil {
-		sort.Sort(ByFields{keys, reflect.ValueOf(items), order})
+		sort.Sort(ByFields{CKeys(keys), reflect.ValueOf(items), order})
 	}
 
-	return keys, items, nil
+	return CKeys(keys), items, nil
 }
 
 func (db AppengineDb) Save(item interface{}, kind string, ancestor string, param map[string]string) (key Key, err error) {
 	if _, ok := item.(ValidationMessager); ok {
 		vm := item.(ValidationMessager).ValidationMessage(db, param)
 		if len(vm) > 0 {
-			return Key{}, errors.New(vm)
+			return CKey{}, errors.New(vm)
 		}
 	}
 	var ancestorKey *datastore.Key
@@ -234,24 +238,26 @@ func (db AppengineDb) Save(item interface{}, kind string, ancestor string, param
 		}
 	}
 	identifier := item.(Identifier)
+	var ckey CKey
 	if !identifier.GetKey().IsZero() {
-		key = identifier.GetKey()
+		ckey = identifier.GetKey().(CKey)
 	} else {
-		key = Key{datastore.NewIncompleteKey(db.c, kind, ancestorKey)}
+		ckey = CKey{datastore.NewIncompleteKey(db.c, kind, ancestorKey)}
 	}
-	key.DsKey, err = datastore.Put(db.c, key.DsKey, item)
+	ckey.DsKey, err = datastore.Put(db.c, ckey.DsKey, item)
 	if err != nil {
 		return
 	}
-	if !key.IsZero() {
-		identifier.SetKey(key)
+	if !ckey.IsZero() {
+		identifier.SetKey(ckey)
+		key = ckey
 	}
 
 	return
 }
 
 func (db AppengineDb) Delete(key Key) error {
-	return datastore.Delete(db.c, key.DsKey)
+	return datastore.Delete(db.c, key.(CKey).DsKey)
 }
 
 func (db AppengineDb) Execute(f func() error) error {
@@ -262,9 +268,17 @@ func (db AppengineDb) Execute(f func() error) error {
 
 func (db AppengineDb) DecodeKey(keyAsString string) (Key, error) {
 	k, err := datastore.DecodeKey(keyAsString)
-	return Key{k}, err
+	return CKey{k}, err
 }
 
 func (db AppengineDb) NewStringKey(kind, key string) Key {
-	return Key{datastore.NewKey(db.c, kind, key, 0, nil)}
+	return CKey{datastore.NewKey(db.c, kind, key, 0, nil)}
+}
+
+func (db AppengineDb) NewKey() Key {
+	return CKey{nil}
+}
+
+func (db AppengineDb) NewKeys() Keys {
+	return CKeys{}
 }

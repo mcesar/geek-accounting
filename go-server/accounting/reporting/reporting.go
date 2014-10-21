@@ -53,7 +53,7 @@ func Journal(c context.Context, m map[string]string, _ core.UserKey) (result int
 
 	accountsMap := map[string]*accounting.Account{}
 	for i, a := range accounts {
-		accountsMap[accountKeys[i].String()] = a
+		accountsMap[accountKeys.KeyAt(i).String()] = a
 	}
 
 	resultMap := []map[string]interface{}{}
@@ -107,11 +107,11 @@ func Ledger(c context.Context, m map[string]string, _ core.UserKey) (result inte
 	var account *accounting.Account
 	accountsMap := map[string]*accounting.Account{}
 	for i, a := range accounts {
-		if a.Number == m["account"] || accountKeys[i].Encode() == m["account"] {
+		if a.Number == m["account"] || accountKeys.KeyAt(i).Encode() == m["account"] {
 			account = a
-			account.Key = accountKeys.KeyAt(i)
+			account.SetKey(accountKeys.KeyAt(i))
 		}
-		accountsMap[accountKeys[i].String()] = a
+		accountsMap[accountKeys.KeyAt(i).String()] = a
 	}
 	if account == nil {
 		err = fmt.Errorf("Account not found")
@@ -244,7 +244,7 @@ func IncomeStatement(c context.Context, m map[string]string, _ core.UserKey) (re
 		}
 	}
 
-	collectRoots(db.NewKey())
+	collectRoots(c.Db.NewKey())
 
 	if (len(revenueRoots) + len(expenseRoots)) == 1 {
 		parentKey := append(revenueRoots, expenseRoots...)[0].Key
