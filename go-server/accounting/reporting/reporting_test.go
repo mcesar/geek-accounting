@@ -101,7 +101,7 @@ func TestLedger(t *testing.T) {
 		t.Error("Account name must be 'Assets'")
 	}
 	if len(ledger["entries"].([]interface{})) != 1 {
-		t.Error("Ledger must have one entry")
+		t.Error("Ledger must have one entry, but was", len(ledger["entries"].([]interface{})))
 	} else {
 		entry := ledger["entries"].([]interface{})[0].(map[string]interface{})
 		if entry["counterpart"].(map[string]interface{})["number"] != "2" {
@@ -250,10 +250,10 @@ func TestBalance(t *testing.T) {
 		t.Error("Balance's entry must have account number")
 	}
 	if balance[0]["value"] != 2.0 {
-		t.Error("Balance's value must be 2")
+		t.Error("Balance's value must be 2, but was", balance[0]["value"])
 	}
 	if balance[1]["value"] != 2.0 {
-		t.Error("Balance's value must be 2")
+		t.Error("Balance's value must be 2, but was", balance[1]["value"])
 	}
 	if err = c.Cache.Flush(); err != nil {
 		t.Fatal(err)

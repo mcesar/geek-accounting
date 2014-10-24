@@ -98,11 +98,11 @@ func TestSaveTransaction(t *testing.T) {
 	if tx.Key.IsZero() {
 		t.Error("Key must not be null")
 	}
-	if tx.Debits[0].Account == a1.Key {
-		t.Error("Account's key must not be null")
+	if tx.Debits[0].Account.String() != a1.Key.String() {
+		t.Error(tx.Debits[0].Account, "expected but was", a1.Key)
 	}
-	if tx.Credits[0].Account == a2.Key {
-		t.Error("Account's key must not be null")
+	if tx.Credits[0].Account.String() != a2.Key.String() {
+		t.Error(tx.Credits[0].Account, "expected but was", a2.Key)
 	}
 
 	var obj interface{}

@@ -73,6 +73,5 @@ func (transaction *Transaction) Load(c <-chan datastore.Property) (err error) {
 }
 
 func (transaction *Transaction) Save(c chan<- datastore.Property) error {
-	transaction.updateAccountsKeysAsString()
 	return datastore.SaveStruct(transaction, c)
 }

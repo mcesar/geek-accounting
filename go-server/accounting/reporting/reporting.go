@@ -23,10 +23,13 @@ func Balance(c context.Context, m map[string]string, _ core.UserKey) (result int
 	if err != nil {
 		return
 	}
+	arr := []db.M{}
 	for _, e := range b {
-		e["account"] = accountToMap(e["account"].(*accounting.Account))
+		arr = append(arr, db.M{
+			"account": accountToMap(e["account"].(*accounting.Account)),
+			"value":   e["value"]})
 	}
-	result = b
+	result = arr
 	return
 }
 

@@ -5,9 +5,9 @@ package db
 import (
 	"appengine"
 	"appengine/datastore"
-	"appengine/memcache"
 	"errors"
 	"fmt"
+	"github.com/mcesarhm/geek-accounting/go-server/cache"
 	"github.com/mcesarhm/geek-accounting/go-server/util"
 	"reflect"
 	"sort"
@@ -15,15 +15,13 @@ import (
 	"strings"
 )
 
-type AppengineDb struct{ c appengine.Context }
+type appengineDb struct{ c appengine.Context }
 
 func NewAppengineDb(c appengine.Context) Db {
-	return AppengineDb{c}
+	return appengineDb{c}
 }
 
 type CKey struct{ DsKey *datastore.Key }
-
-type CKeys []*datastore.Key
 
 func (key CKey) String() string {
 	if key.DsKey == nil {
@@ -61,23 +59,7 @@ func (key CKey) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-func (keys CKeys) Len() int {
-	return len(keys)
-}
-
-func (keys CKeys) KeyAt(i int) Key {
-	return CKey{keys[i]}
-}
-
-func (keys CKeys) Append(key Key) Keys {
-	return Keys(append(keys, key.(CKey).DsKey))
-}
-
-func (keys CKeys) Swap(i, j int) {
-	keys[i], keys[j] = keys[j], keys[i]
-}
-
-func (db AppengineDb) Get(item interface{}, keyAsString string) (result interface{}, err error) {
+func (db appengineDb) Get(item interface{}, keyAsString string) (result interface{}, err error) {
 	key, err := datastore.DecodeKey(keyAsString)
 	if err != nil {
 		return
@@ -92,11 +74,11 @@ func (db AppengineDb) Get(item interface{}, keyAsString string) (result interfac
 	return
 }
 
-func (db AppengineDb) GetAll(kind string, ancestor string, items interface{}, filters M, orderKeys []string) (Keys, interface{}, error) {
+func (db appengineDb) GetAll(kind string, ancestor string, items interface{}, filters M, orderKeys []string) (Keys, interface{}, error) {
 	return db.GetAllWithLimit(kind, ancestor, items, filters, orderKeys, 0)
 }
 
-func (db AppengineDb) GetAllWithLimit(kind string, ancestor string, items interface{}, filters M, orderKeys []string, limit int) (Keys, interface{}, error) {
+func (db appengineDb) GetAllWithLimit(kind string, ancestor string, items interface{}, filters M, orderKeys []string, limit int) (Keys, interface{}, error) {
 	q := datastore.NewQuery(kind)
 	if len(ancestor) > 0 {
 		ancestorKey, err := datastore.DecodeKey(ancestor)
@@ -133,32 +115,35 @@ func (db AppengineDb) GetAllWithLimit(kind string, ancestor string, items interf
 			identifier.SetKey(CKey{keys[i]})
 		}
 	}
-	return CKeys(keys), items, err
+	return toKeys(keys), items, err
 }
 
-func (db AppengineDb) GetAllFromCache(kind string, ancestor Key, items interface{}, filteredItems interface{}, filters M, order []string, cacheKey string) (Keys, interface{}, error) {
-	var arr []interface{}
-	var keys []*datastore.Key
-	_, err := memcache.Gob.Get(db.c, cacheKey, &arr)
-	if err == memcache.ErrCacheMiss {
+func (db appengineDb) GetAllFromCache(kind string, ancestor string, items interface{}, filters M, order []string, c cache.Cache, cacheKey string) (Keys, interface{}, error) {
+	arr := []interface{}{}
+	err := c.Get(cacheKey, &arr)
+	if err == nil && len(arr) == 0 {
 		q := datastore.NewQuery(kind)
-		if ancestor.(CKey).DsKey != nil {
-			q = q.Ancestor(ancestor.(CKey).DsKey)
+		if len(ancestor) > 0 {
+			ancestorKey, err := datastore.DecodeKey(ancestor)
+			if err != nil {
+				return nil, nil, err
+			}
+			q = q.Ancestor(ancestorKey)
 		}
+		var keys []*datastore.Key
 		if keys, err = q.GetAll(db.c, items); err != nil {
 			return nil, nil, err
 		}
 		itemsValue := reflect.Indirect(reflect.ValueOf(items))
-		items = itemsValue.Interface()
 		nextKey := cacheKey
 		nextChunk := 0
 		i := 0
 		for {
 			chunkSize := util.Min(MaxItemsPerMemcacheEntry, len(keys)-i)
-			keysChunk := make(CKeys, chunkSize)
+			keysChunk := make(Keys, chunkSize)
 			itemsChunk := reflect.MakeSlice(itemsValue.Type(), chunkSize, chunkSize)
 			for j := 0; j < chunkSize; j++ {
-				keysChunk[j] = keys[i+j]
+				keysChunk[j] = CKey{keys[i+j]}
 				itemsChunk.Index(j).Set(itemsValue.Index(i + j))
 			}
 			if i+chunkSize >= len(keys) {
@@ -167,11 +152,7 @@ func (db AppengineDb) GetAllFromCache(kind string, ancestor Key, items interface
 				nextKey = strings.Split(cacheKey, "|")[0] + "|" + strconv.Itoa(nextChunk+1)
 			}
 			chunkArr := []interface{}{keysAsStrings(keysChunk), itemsChunk.Interface(), nextKey}
-			memcacheItem := &memcache.Item{
-				Key:    cacheKey,
-				Object: chunkArr,
-			}
-			if err = memcache.Gob.Set(db.c, memcacheItem); err != nil {
+			if err = c.Set(cacheKey, chunkArr); err != nil {
 				return nil, nil, err
 			}
 			if nextChunk == 0 {
@@ -187,43 +168,45 @@ func (db AppengineDb) GetAllFromCache(kind string, ancestor Key, items interface
 	} else if err != nil {
 		return nil, nil, err
 	}
-	keys = []*datastore.Key{}
+	keys := Keys{}
+	resultItems := reflect.MakeSlice(reflect.ValueOf(items).Elem().Type(), 0, 0)
 	for {
 		chunkKeys, err := stringsAsKeys(db, arr[0].([]string))
 		if err != nil {
 			return nil, nil, err
 		}
+		var chunkItemsValue reflect.Value
 		if filters == nil {
-			itemsValue := reflect.ValueOf(arr[1])
-			resultItems := reflect.ValueOf(filteredItems)
-			for i := 0; i < itemsValue.Len(); i++ {
-				resultItems = reflect.Append(resultItems, itemsValue.Index(i))
-			}
-			filteredItems = resultItems.Interface()
+			chunkItemsValue = reflect.ValueOf(arr[1])
 		} else {
-			if chunkKeys, filteredItems, err = filter(db, chunkKeys, arr[1], filters, filteredItems); err != nil {
+			var filteredItems interface{}
+			if chunkKeys, filteredItems, err = filter(db, chunkKeys, arr[1], filters); err != nil {
 				return nil, nil, err
 			}
+			chunkItemsValue = reflect.ValueOf(filteredItems)
 		}
 		for i := 0; i < chunkKeys.Len(); i++ {
-			keys = append(keys, chunkKeys.KeyAt(i).(CKey).DsKey)
+			keys = keys.Append(chunkKeys.KeyAt(i))
+		}
+		for i := 0; i < chunkItemsValue.Len(); i++ {
+			resultItems = reflect.Append(resultItems, chunkItemsValue.Index(i))
 		}
 		if len(arr[2].(string)) == 0 {
 			break
 		}
-		if _, err := memcache.Gob.Get(db.c, arr[2].(string), &arr); err != nil {
+		if err := c.Get(arr[2].(string), arr); err != nil {
 			return nil, nil, err
 		}
 	}
-	items = filteredItems
 	if order != nil {
-		sort.Sort(ByFields{CKeys(keys), reflect.ValueOf(items), order})
+		sort.Sort(byFields{keys, resultItems, order})
 	}
+	reflect.Indirect(reflect.ValueOf(items)).Set(resultItems)
 
-	return CKeys(keys), items, nil
+	return keys, items, nil
 }
 
-func (db AppengineDb) Save(item interface{}, kind string, ancestor string, param map[string]string) (key Key, err error) {
+func (db appengineDb) Save(item interface{}, kind string, ancestor string, param map[string]string) (key Key, err error) {
 	if _, ok := item.(ValidationMessager); ok {
 		vm := item.(ValidationMessager).ValidationMessage(db, param)
 		if len(vm) > 0 {
@@ -256,29 +239,33 @@ func (db AppengineDb) Save(item interface{}, kind string, ancestor string, param
 	return
 }
 
-func (db AppengineDb) Delete(key Key) error {
+func (db appengineDb) Delete(key Key) error {
 	return datastore.Delete(db.c, key.(CKey).DsKey)
 }
 
-func (db AppengineDb) Execute(f func() error) error {
+func (db appengineDb) Execute(f func() error) error {
 	return datastore.RunInTransaction(db.c, func(appengine.Context) (err error) {
 		return f()
 	}, nil)
 }
 
-func (db AppengineDb) DecodeKey(keyAsString string) (Key, error) {
+func (db appengineDb) DecodeKey(keyAsString string) (Key, error) {
 	k, err := datastore.DecodeKey(keyAsString)
 	return CKey{k}, err
 }
 
-func (db AppengineDb) NewStringKey(kind, key string) Key {
+func (db appengineDb) NewStringKey(kind, key string) Key {
 	return CKey{datastore.NewKey(db.c, kind, key, 0, nil)}
 }
 
-func (db AppengineDb) NewKey() Key {
+func (db appengineDb) NewKey() Key {
 	return CKey{nil}
 }
 
-func (db AppengineDb) NewKeys() Keys {
-	return CKeys{}
+func toKeys(dsKeys []*datastore.Key) Keys {
+	result := Keys{}
+	for _, k := range dsKeys {
+		result = result.Append(CKey{k})
+	}
+	return result
 }

@@ -1,10 +1,13 @@
 package db
 
 import (
+	"errors"
 	"fmt"
+	"github.com/mcesarhm/geek-accounting/go-server/cache"
 	"github.com/mcesarhm/geek-accounting/go-server/util"
-	//"log"
 	"reflect"
+	//"log"
+
 	"strings"
 	"time"
 )
@@ -13,14 +16,13 @@ type Db interface {
 	Get(item interface{}, keyAsString string) (interface{}, error)
 	GetAll(kind string, ancestor string, items interface{}, filters M, orderKeys []string) (Keys, interface{}, error)
 	GetAllWithLimit(kind string, ancestor string, items interface{}, filters M, orderKeys []string, limit int) (Keys, interface{}, error)
-	GetAllFromCache(kind string, ancestor Key, items interface{}, filteredItems interface{}, filters M, order []string, cacheKey string) (Keys, interface{}, error)
+	GetAllFromCache(kind string, ancestor string, items interface{}, filters M, orderKeys []string, c cache.Cache, cacheKey string) (Keys, interface{}, error)
 	Save(item interface{}, kind string, ancestor string, param map[string]string) (key Key, err error)
 	Delete(Key) error
 	Execute(func() error) error
 	DecodeKey(string) (Key, error)
-	NewStringKey(kind, key string) Key
 	NewKey() Key
-	NewKeys() Keys
+	NewStringKey(kind, key string) Key
 }
 
 type Key interface {
@@ -32,11 +34,22 @@ type Key interface {
 	UnmarshalJSON([]byte) error
 }
 
-type Keys interface {
-	Len() int
-	KeyAt(int) Key
-	Append(Key) Keys
-	Swap(i, j int)
+type Keys []CKey
+
+func (keys Keys) Len() int {
+	return len(keys)
+}
+
+func (keys Keys) KeyAt(i int) Key {
+	return keys[i]
+}
+
+func (keys Keys) Append(key Key) Keys {
+	return Keys(append(keys, key.(CKey)))
+}
+
+func (keys Keys) Swap(i, j int) {
+	keys[i], keys[j] = keys[j], keys[i]
 }
 
 type M map[string]interface{}
@@ -72,7 +85,7 @@ func keysAsStrings(keys Keys) []string {
 }
 
 func stringsAsKeys(db Db, strings []string) (Keys, error) {
-	result := db.NewKeys()
+	result := Keys{}
 	for _, s := range strings {
 		if key, err := db.DecodeKey(s); err != nil {
 			return nil, err
@@ -83,49 +96,56 @@ func stringsAsKeys(db Db, strings []string) (Keys, error) {
 	return result, nil
 }
 
-type Comparable interface {
-	Less(i Comparable) bool
+type comparable interface {
+	Less(i comparable) bool
 }
 
-type IntComparable int
+type intComparable int
 
-func (a IntComparable) Less(b Comparable) bool {
-	return a < b.(IntComparable)
+func (a intComparable) Less(b comparable) bool {
+	return a < b.(intComparable)
 }
 
-type StringComparable string
+type stringComparable string
 
-func (a StringComparable) Less(b Comparable) bool {
-	return a < b.(StringComparable)
+func (a stringComparable) Less(b comparable) bool {
+	return a < b.(stringComparable)
 }
 
-type TimeComparable time.Time
+type timeComparable time.Time
 
-func (a TimeComparable) Less(b Comparable) bool {
-	return time.Time(a).Before(time.Time(b.(TimeComparable)))
+func (a timeComparable) Less(b comparable) bool {
+	return time.Time(a).Before(time.Time(b.(timeComparable)))
 }
 
-type ByFields struct {
+type byFields struct {
 	keys   Keys
 	values reflect.Value
 	fields []string
 }
 
-func (a ByFields) Len() int { return a.values.Len() }
+func (a byFields) Len() int { return a.values.Len() }
 
-func (a ByFields) Swap(i, j int) {
+func (a byFields) Swap(i, j int) {
 	a.keys.Swap(i, j)
 	swap(a.values, i, j)
 }
 
-func (a ByFields) Less(i, j int) bool {
+func (a byFields) Less(i, j int) bool {
 	for _, f := range a.fields {
-		vi := a.values.Index(i).Elem().FieldByName(f).Interface()
-		vj := a.values.Index(j).Elem().FieldByName(f).Interface()
-		if ok, _ := compare(vi, vj, ">"); ok {
+		less := "<"
+		greater := ">"
+		if f[0:1] == "-" {
+			f = f[1:len(f)]
+			less = ">"
+			greater = "<"
+		}
+		vi := reflect.Indirect(a.values.Index(i)).FieldByName(f).Interface()
+		vj := reflect.Indirect(a.values.Index(j)).FieldByName(f).Interface()
+		if ok, _ := compare(vi, vj, greater); ok {
 			return false
 		}
-		if ok, _ := compare(vi, vj, "<"); ok {
+		if ok, _ := compare(vi, vj, less); ok {
 			return true
 		}
 	}
@@ -138,13 +158,21 @@ func swap(arr reflect.Value, i, j int) {
 	arr.Index(j).Set(t)
 }
 
-func filter(d Db, keys Keys, items interface{}, filters map[string]interface{}, dest interface{}) (Keys, interface{}, error) {
-	resultKeys := d.NewKeys()
-	resultItems := reflect.ValueOf(dest)
+func filter(d Db, keys Keys, items interface{}, filters map[string]interface{}) (Keys, interface{}, error) {
+	resultKeys := Keys{}
+	iv := reflect.ValueOf(items)
+	if iv.IsNil() {
+		return nil, nil, errors.New("Invalid entity type")
+	}
+	iv = reflect.Indirect(iv)
+	resultItems := reflect.MakeSlice(iv.Type(), 0, 0)
 	ii := reflect.ValueOf(items)
 	for i := 0; i < ii.Len(); i++ {
 		item := ii.Index(i)
-		if ok, err := Matches(item.Elem().Interface(), filters); err != nil {
+		if ii.Type().Elem().Kind() != reflect.Ptr {
+			item = reflect.Indirect(item)
+		}
+		if ok, err := Matches(item.Interface(), filters); err != nil {
 			return nil, nil, err
 		} else if ok {
 			resultKeys = resultKeys.Append(keys.KeyAt(i))
@@ -155,7 +183,7 @@ func filter(d Db, keys Keys, items interface{}, filters map[string]interface{}, 
 }
 
 func Matches(value interface{}, filters map[string]interface{}) (bool, error) {
-	item := reflect.ValueOf(value).Elem()
+	item := reflect.Indirect(reflect.ValueOf(value))
 	for k, v := range filters {
 		keyArray := strings.Split(k, " ")
 		fn := keyArray[0]
@@ -195,16 +223,16 @@ func Matches(value interface{}, filters map[string]interface{}) (bool, error) {
 }
 
 func compare(v1, v2 interface{}, operator string) (bool, error) {
-	var c1, c2 Comparable
+	var c1, c2 comparable
 	if intValue, ok := v1.(int); ok {
-		c1 = IntComparable(intValue)
-		c2 = IntComparable(v2.(int))
+		c1 = intComparable(intValue)
+		c2 = intComparable(v2.(int))
 	} else if stringValue, ok := v1.(string); ok {
-		c1 = StringComparable(stringValue)
-		c2 = StringComparable(v2.(string))
+		c1 = stringComparable(stringValue)
+		c2 = stringComparable(v2.(string))
 	} else if timeValue, ok := v1.(time.Time); ok {
-		c1 = TimeComparable(timeValue)
-		c2 = TimeComparable(v2.(time.Time))
+		c1 = timeComparable(timeValue)
+		c2 = timeComparable(v2.(time.Time))
 	} else {
 		return false, fmt.Errorf("Type not allowed: %v", reflect.ValueOf(v1).Type())
 	}

@@ -310,7 +310,7 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 	}
 	if parentNumber, ok := m["parent"]; ok {
 		var accounts []Account
-		keys, _, err := c.Db.GetAll("Account", param["coa"], accounts, db.M{"Number = ": parentNumber}, nil)
+		keys, _, err := c.Db.GetAll("Account", param["coa"], &accounts, db.M{"Number = ": parentNumber}, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -490,6 +490,8 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 		isUpdate = true
 	}
 
+	transaction.updateAccountsKeysAsString()
+
 	if k, err := c.Db.Save(transaction, "Transaction", param["coa"], param); err != nil {
 		return nil, err
 	} else {
@@ -546,27 +548,19 @@ func DeleteTransaction(c context.Context, m map[string]interface{}, param map[st
 }
 
 func Accounts(c context.Context, coaKey string, filters map[string]interface{}) (keys db.Keys, accounts []*Account, err error) {
-
-	key, err := c.Db.DecodeKey(coaKey)
+	keys, _, err = c.Db.GetAllFromCache("Account", coaKey, &accounts, filters, []string{"Number"}, c.Cache, "accounts_"+coaKey)
 	if err != nil {
 		return
 	}
-
-	keys, items, err := c.Db.GetAllFromCache("Account", key, &accounts, []*Account{}, filters, []string{"Number"}, "accounts_"+coaKey)
-	if err != nil {
-		return
-	}
-	accounts = items.([]*Account)
-
 	return
 }
 
 func Transactions(c context.Context, coaKey string, filters map[string]interface{}) (keys db.Keys, transactions []*Transaction, err error) {
-	keys, items, err := c.Db.GetAll("Transaction", coaKey, &transactions, filters, []string{"Date", "AsOf"})
+	keys, _, err = c.Db.GetAll("Transaction", coaKey, &transactions, filters, []string{"Date", "AsOf"})
 	if err != nil {
 		return
 	}
-	return keys, *items.(*[]*Transaction), err
+	return
 }
 
 type TransactionWithValue struct {
@@ -574,9 +568,10 @@ type TransactionWithValue struct {
 	Value float64
 }
 
-func TransactionsWithValue(c context.Context, coaKey string, account *Account, from, to time.Time) (transactions []*TransactionWithValue, balance float64, err error) {
+func TransactionsWithValue(c context.Context, coaKey string, account *Account, from, to time.Time) (transactionsWithValue []*TransactionWithValue, balance float64, err error) {
 
 	var keys db.Keys
+	var transactions []*Transaction
 	if keys, _, err = c.Db.GetAll("Transaction", coaKey, &transactions, db.M{"AccountsKeysAsString =": account.Key.Encode(), "Date >=": from, "Date <=": to}, []string{"Date", "AsOf"}); err != nil {
 		return
 	}
@@ -591,7 +586,6 @@ func TransactionsWithValue(c context.Context, coaKey string, account *Account, f
 	}
 	var (
 		t *TransactionWithValue
-		i int
 	)
 	lookupAccount := func(key db.Key) *Account {
 		if key.String() == account.Key.String() {
@@ -602,9 +596,11 @@ func TransactionsWithValue(c context.Context, coaKey string, account *Account, f
 	addValue := func(key db.Key, value float64) {
 		t.Value += value
 	}
-	for i, t = range transactions {
+	for i, t_ := range transactions {
+		t = &TransactionWithValue{*t_, 0}
 		t.SetKey(keys.KeyAt(i))
 		t.incrementValue(lookupAccount, addValue)
+		transactionsWithValue = append(transactionsWithValue, t)
 	}
 	return
 }
