@@ -5,7 +5,8 @@ import (
 	"github.com/mcesarhm/geek-accounting/go-server/context"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
-	"github.com/mcesarhm/geek-accounting/go-server/util"
+	"github.com/mcesarhm/geek-accounting/go-server/extensions/collections"
+	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
 	_ "log"
 	"sort"
 	"strings"
@@ -63,16 +64,16 @@ func (account *Account) ValidationMessage(db db.Db, param map[string]string) str
 	if len(strings.TrimSpace(account.Name)) == 0 {
 		return "The name must be informed"
 	}
-	if !util.Contains(account.Tags, "balanceSheet") && !util.Contains(account.Tags, "incomeStatement") {
+	if !collections.Contains(account.Tags, "balanceSheet") && !collections.Contains(account.Tags, "incomeStatement") {
 		return "The financial statement must be informed"
 	}
-	if util.Contains(account.Tags, "balanceSheet") && util.Contains(account.Tags, "incomeStatement") {
+	if collections.Contains(account.Tags, "balanceSheet") && collections.Contains(account.Tags, "incomeStatement") {
 		return "The statement must be either balance sheet or income statement"
 	}
-	if !util.Contains(account.Tags, "debitBalance") && !util.Contains(account.Tags, "creditBalance") {
+	if !collections.Contains(account.Tags, "debitBalance") && !collections.Contains(account.Tags, "creditBalance") {
 		return "The normal balance must be informed"
 	}
-	if util.Contains(account.Tags, "debitBalance") && util.Contains(account.Tags, "creditBalance") {
+	if collections.Contains(account.Tags, "debitBalance") && collections.Contains(account.Tags, "creditBalance") {
 		return "The normal balance must be either debit or credit"
 	}
 	count := 0
@@ -104,7 +105,7 @@ func (account *Account) ValidationMessage(db db.Db, param map[string]string) str
 			return "The number must start with parent's number"
 		}
 		for key, value := range inheritedProperties {
-			if util.Contains(parent.Tags, key) && !util.Contains(account.Tags, key) {
+			if collections.Contains(parent.Tags, key) && !collections.Contains(account.Tags, key) {
 				return "The " + value + " must be same as the parent"
 			}
 		}
@@ -116,7 +117,7 @@ func (account *Account) ValidationMessage(db db.Db, param map[string]string) str
 }
 
 func (account *Account) Debit(value float64) float64 {
-	if util.Contains(account.Tags, "debitBalance") {
+	if collections.Contains(account.Tags, "debitBalance") {
 		return value
 	} else {
 		return -value
@@ -124,7 +125,7 @@ func (account *Account) Debit(value float64) float64 {
 }
 
 func (account *Account) Credit(value float64) float64 {
-	if util.Contains(account.Tags, "creditBalance") {
+	if collections.Contains(account.Tags, "creditBalance") {
 		return value
 	} else {
 		return -value
@@ -183,7 +184,7 @@ func (transaction *Transaction) ValidationMessage(db db.Db, param map[string]str
 	if m, creditsSum = ev(transaction.Credits); len(m) > 0 {
 		return m
 	}
-	if util.Round(debitsSum*100) != util.Round(creditsSum*100) {
+	if xmath.Round(debitsSum*100) != xmath.Round(creditsSum*100) {
 		return "The sum of debit values must be equals to the sum of credit values"
 	}
 	return ""
@@ -237,7 +238,7 @@ func (entry *Entry) ValidationMessage(db db.Db, param map[string]string) string 
 	if account == nil {
 		return "Account not found"
 	}
-	if !util.Contains(account.Tags, "analytic") {
+	if !collections.Contains(account.Tags, "analytic") {
 		return "The account must be analytic"
 	}
 	coaKey, err := db.DecodeKey(param["coa"])
@@ -327,7 +328,7 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 		if k != "name" && k != "number" && k != "parent" {
 			if k == "retainedEarnings" {
 				retainedEarningsAccount = true
-			} else if !util.Contains(account.Tags, k) {
+			} else if !collections.Contains(account.Tags, k) {
 				_, ok1 := inheritedProperties[k]
 				_, ok2 := nonInheritedProperties[k]
 				if ok1 || ok2 {
@@ -336,7 +337,7 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 			}
 		}
 	}
-	if !util.Contains(account.Tags, "analytic") && !isUpdate {
+	if !collections.Contains(account.Tags, "analytic") && !isUpdate {
 		account.Tags = append(account.Tags, "analytic")
 	}
 
@@ -359,11 +360,11 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 		}
 
 		if !account.Parent.IsZero() && !isUpdate {
-			i := util.IndexOf(parent.Tags, "analytic")
+			i := collections.IndexOf(parent.Tags, "analytic")
 			if i != -1 {
 				parent.Tags = append(parent.Tags[:i], parent.Tags[i+1:]...)
 			}
-			if !util.Contains(parent.Tags, "synthetic") {
+			if !collections.Contains(parent.Tags, "synthetic") {
 				parent.Tags = append(parent.Tags, "synthetic")
 			}
 			if _, err = c.Db.Save(parent, "Account", param["coa"], param); err != nil {
@@ -466,7 +467,7 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 			} else {
 				result[i] = Entry{
 					Account: key.(db.CKey),
-					Value:   util.Round(entryMap["value"].(float64)*100) / 100}
+					Value:   xmath.Round(entryMap["value"].(float64)*100) / 100}
 			}
 		}
 		return
@@ -700,7 +701,7 @@ func Balances(c context.Context, coaKey string, from, to time.Time, accountFilte
 		addValue := func(key db.Key, value float64) {
 			item := resultMap[key.String()]
 			item["value"] = item["value"].(float64) + value
-			item["value"] = util.Round(item["value"].(float64)*100) / 100
+			item["value"] = xmath.Round(item["value"].(float64)*100) / 100
 		}
 		for _, t := range transactions {
 			if !t.Date.Before(from) && !t.Date.After(to) {

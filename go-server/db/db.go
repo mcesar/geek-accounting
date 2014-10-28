@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/cache"
-	"github.com/mcesarhm/geek-accounting/go-server/util"
+	"github.com/mcesarhm/geek-accounting/go-server/extensions/collections"
 	"reflect"
 	//"log"
 
@@ -207,7 +207,7 @@ func Matches(value interface{}, filters map[string]interface{}) (bool, error) {
 			if f.Interface() != v {
 				return false, nil
 			}
-		} else if util.Contains([]string{"<", ">", "<=", ">="}, operator) {
+		} else if collections.Contains([]string{"<", ">", "<=", ">="}, operator) {
 			ok, err := compare(f.Interface(), v, operator)
 			if err != nil {
 				return false, err

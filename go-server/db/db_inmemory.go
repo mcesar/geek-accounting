@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/cache"
-	"github.com/mcesarhm/geek-accounting/go-server/util"
+	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -164,7 +164,7 @@ func (db inMemoryDb) GetAllWithLimit(kind string, ancestor string, items interfa
 		if limit > 0 {
 			limitedKeys := Keys{}
 			limitedItems := reflect.MakeSlice(itemsValue.Type(), 0, 0)
-			for i := 0; i < util.Min(limit, resultItems.Len()); i++ {
+			for i := 0; i < xmath.Min(limit, resultItems.Len()); i++ {
 				limitedItems = reflect.Append(limitedItems, resultItems.Index(i))
 				limitedKeys = limitedKeys.Append(keys.KeyAt(i))
 			}

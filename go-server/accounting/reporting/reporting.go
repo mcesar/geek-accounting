@@ -6,7 +6,7 @@ import (
 	"github.com/mcesarhm/geek-accounting/go-server/context"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
-	"github.com/mcesarhm/geek-accounting/go-server/util"
+	"github.com/mcesarhm/geek-accounting/go-server/extensions/collections"
 	//"log"
 	"math"
 	"strings"
@@ -215,7 +215,7 @@ func IncomeStatement(c context.Context, m map[string]string, _ core.UserKey) (re
 	)
 
 	addBalance := func(entry *entryType, balance map[string]interface{}) *entryType {
-		if util.Contains(balance["account"].(*accounting.Account).Tags, "analytic") && balance["value"].(float64) > 0 {
+		if collections.Contains(balance["account"].(*accounting.Account).Tags, "analytic") && balance["value"].(float64) > 0 {
 			if entry == nil {
 				entry = &entryType{}
 			}
@@ -238,7 +238,7 @@ func IncomeStatement(c context.Context, m map[string]string, _ core.UserKey) (re
 		for _, m := range balances {
 			account := m["account"].(*accounting.Account)
 			if (account.Parent.IsZero() && parent.IsZero()) || account.Parent.String() == parent.String() {
-				if util.Contains(account.Tags, "creditBalance") {
+				if collections.Contains(account.Tags, "creditBalance") {
 					revenueRoots = append(revenueRoots, account)
 				} else {
 					expenseRoots = append(expenseRoots, account)
@@ -258,21 +258,21 @@ func IncomeStatement(c context.Context, m map[string]string, _ core.UserKey) (re
 
 	for _, m := range balances {
 		account := m["account"].(*accounting.Account)
-		if util.Contains(account.Tags, "operating") && isDescendent(account, revenueRoots) {
+		if collections.Contains(account.Tags, "operating") && isDescendent(account, revenueRoots) {
 			resultTyped.GrossRevenue = addBalance(resultTyped.GrossRevenue, m)
-		} else if util.Contains(account.Tags, "deduction") {
+		} else if collections.Contains(account.Tags, "deduction") {
 			resultTyped.Deduction = addBalance(resultTyped.Deduction, m)
-		} else if util.Contains(account.Tags, "salesTax") {
+		} else if collections.Contains(account.Tags, "salesTax") {
 			resultTyped.SalesTax = addBalance(resultTyped.SalesTax, m)
-		} else if util.Contains(account.Tags, "cost") {
+		} else if collections.Contains(account.Tags, "cost") {
 			resultTyped.Cost = addBalance(resultTyped.Cost, m)
-		} else if util.Contains(account.Tags, "operating") && isDescendent(account, expenseRoots) {
+		} else if collections.Contains(account.Tags, "operating") && isDescendent(account, expenseRoots) {
 			resultTyped.OperatingExpense = addBalance(resultTyped.OperatingExpense, m)
-		} else if util.Contains(account.Tags, "nonOperatingTax") {
+		} else if collections.Contains(account.Tags, "nonOperatingTax") {
 			resultTyped.NonOperatingTax = addBalance(resultTyped.NonOperatingTax, m)
-		} else if util.Contains(account.Tags, "incomeTax") {
+		} else if collections.Contains(account.Tags, "incomeTax") {
 			resultTyped.IncomeTax = addBalance(resultTyped.IncomeTax, m)
-		} else if util.Contains(account.Tags, "dividends") {
+		} else if collections.Contains(account.Tags, "dividends") {
 			resultTyped.Dividends = addBalance(resultTyped.Dividends, m)
 		} else if isDescendent(account, revenueRoots) {
 			resultTyped.NonOperatingRevenue = addBalance(resultTyped.NonOperatingRevenue, m)
@@ -330,7 +330,7 @@ func accountToMap(account *accounting.Account) map[string]interface{} {
 		"_id":           account.Key,
 		"number":        account.Number,
 		"name":          account.Name,
-		"debitBalance":  util.Contains(account.Tags, "debitBalance"),
-		"creditBalance": util.Contains(account.Tags, "creditBalance"),
+		"debitBalance":  collections.Contains(account.Tags, "debitBalance"),
+		"creditBalance": collections.Contains(account.Tags, "creditBalance"),
 	}
 }

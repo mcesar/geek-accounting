@@ -8,7 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/cache"
-	"github.com/mcesarhm/geek-accounting/go-server/util"
+	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
 	"reflect"
 	"sort"
 	"strconv"
@@ -139,7 +139,7 @@ func (db appengineDb) GetAllFromCache(kind string, ancestor string, items interf
 		nextChunk := 0
 		i := 0
 		for {
-			chunkSize := util.Min(MaxItemsPerMemcacheEntry, len(keys)-i)
+			chunkSize := xmath.Min(MaxItemsPerMemcacheEntry, len(keys)-i)
 			keysChunk := make(Keys, chunkSize)
 			itemsChunk := reflect.MakeSlice(itemsValue.Type(), chunkSize, chunkSize)
 			for j := 0; j < chunkSize; j++ {
