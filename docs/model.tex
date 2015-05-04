@@ -102,6 +102,10 @@ and credits by negative integers.
 
 \section{Operations}
 
+In the following description of the operations, the notation $\langle x, y \rangle$ means
+a range specification, and $R^{\langle n \rangle}$ means a set of $n$
+range specifications.
+
 A \emph{double-entry bookkeeping space} supports the following operations:
 
 \begin{description}
@@ -116,27 +120,32 @@ A \emph{double-entry bookkeeping space} supports the following operations:
 		The new set $M \cup M'$ will be the new set associated with $S$
 		instead of $M$.
 
-	\item[\textsc{Projection}$(S, \langle b_1, e_1 \rangle, \; \cdots,
-		\langle b_n, e_n \rangle)$] 
-		returns a two dimensional array $P=\left(p_{qr}\right)$ such that:
-		\[
-			p_{qr} = \sum_{j=b_r}^{e_r}{\sum_{k=1}^{|M|}{S_{qjk}}}, 
-				\; 1 \leq q \leq |A|, \; 1 \leq r \leq n
-		\]
+	\item[\textsc{Projection}$(S, D^{\langle n \rangle}, M^{\langle m \rangle})$] 
+		returns a potentially smaller space $S'=\left(s'_{pqr}\right)$,
+		where $D^{\langle n \rangle} = \{\langle x_i, y_i \rangle\}$, and
+		$M^{\langle m \rangle} = \{\langle u_i, w_i \rangle\}$,
+		such that:
+		\begin{align*}
+			s'_{pqr} &= \sum_{j=x_q}^{y_q}{\sum_{k=u_r}^{w_r}{s_{pjk}}} \\ 
+			1 \leq & \; p \leq |A| \\
+			1 \leq & \; q \leq n \\
+			1 \leq & \; r \leq m.
+		\end{align*}
 
-	\item[\textsc{Slice}$(S, A', \langle d_b,d_e \rangle, \langle m_b,m_e \rangle)$] 
-		returns a potentially smaller space $S'=\left(s'_{pqr}\right)$, such that:
-		% \[
-			\begin{align*}
-				s'_{pqr} & = s_{pjk} \\
-				1 \leq & \; p \leq |A| \\
-				1 \leq & \; q \leq d_e-d_b+1 \\
-				1 \leq & \; r \leq m_e-m_b+1 \\
-				d_b \leq & \; j \leq d_e \\
-				m_b \leq & \; k \leq m_e \\
-				\forall A_{p} \in A' & \quad s'_{pqr} > 0.
-			\end{align*}
-		% \]
+	\item[\textsc{Slice}$(S, A', D^{\langle n \rangle}, M^{\langle m \rangle})$] 
+		returns a potentially smaller space $S'=\left(s'_{pqr}\right)$, 
+		where $D^{\langle n \rangle} = \{\langle x_i, y_i \rangle\}$, and
+		$M^{\langle m \rangle} = \{\langle u_i, w_i \rangle\}$,
+		such that:
+		\begin{align*}
+			s'_{pqr} & = s_{pjk} \\
+			1 \leq & \; p \leq |A| \\
+			1 \leq & \; q \leq \sum_{i=1}^{n}{y_i-x_i+1} \\
+			1 \leq & \; r \leq \sum_{i=1}^{m}{w_i-u_i+1} \\
+			x_i \leq & \; j \leq y_i, \forall i \in \{1,\cdots,n\} \\
+			u_i \leq & \; k \leq w_i, \forall i \in \{1,\cdots,m\} \\
+			\forall A_{p} \in A' & \quad s'_{pqr} \neq 0.
+		\end{align*}
 
 \end{description}
 
