@@ -105,13 +105,16 @@ and credits by negative integers.
 A \emph{double-entry bookkeeping space} supports the following operations:
 
 \begin{description}
-	\item[\textsc{Insert}$(S,T)$] inserts the two dimensional array 
-	$T=\left(t_{ij}\right)$ into the space,
-		such that the set $M$ of the space $S$ will be replaced by $M'$, 
-		where $|M'| = |M|+1$, and:
+	\item[\textsc{Append}$(S,S')$] append the space
+	$S'=\left(s'_{ijk}\right)$ to the space $S$,
+		such that, given the set $M$ associated with the space $S$ and
+		the set $M'$ associated with the space $S':
+		M \cap M' = \emptyset$, and
 		\[
-			s_{ijk} = t_{ij}, \; k = |M'|
+			s_{ijk} = s'_{ij}, \; |M|+1 \leq k \leq |M|+|M'|.
 		\]
+		The new set $M \cup M'$ will be the new set associated with $S$
+		instead of $M$.
 
 	\item[\textsc{Projection}$(S, \langle b_1, e_1 \rangle, \; \cdots,
 		\langle b_n, e_n \rangle)$] 
@@ -125,9 +128,10 @@ A \emph{double-entry bookkeeping space} supports the following operations:
 		returns a potentially smaller space $S'=\left(s'_{pqr}\right)$, such that:
 		\[
 			\begin{array}{l}
-				s'_{pqr} = s_{ijk}, \\
-				1 \leq p \leq |A'|, \;1 \leq q \leq d_e-d_b+1, \; 1 \leq r \leq m_e-m_b+1, \\
-				A'_p = A_i, \; d_b \leq j \leq d_e, \; m_b \leq k \leq m_e
+				s'_{pqr} = s_{pjk}, \\
+				1 \leq p \leq |A|, \;1 \leq q \leq d_e-d_b+1, \; 1 \leq r \leq m_e-m_b+1, \\
+				d_b \leq j \leq d_e, \; m_b \leq k \leq m_e, and \\
+				\forall A_{p} \in A' \quad s'_{pqr} > 0.
 			\end{array}			
 		\]
 
