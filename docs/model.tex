@@ -126,14 +126,17 @@ A \emph{double-entry bookkeeping space} supports the following operations:
 
 	\item[\textsc{Slice}$(S, A', \langle d_b,d_e \rangle, \langle m_b,m_e \rangle)$] 
 		returns a potentially smaller space $S'=\left(s'_{pqr}\right)$, such that:
-		\[
-			\begin{array}{l}
-				s'_{pqr} = s_{pjk}, \\
-				1 \leq p \leq |A|, \;1 \leq q \leq d_e-d_b+1, \; 1 \leq r \leq m_e-m_b+1, \\
-				d_b \leq j \leq d_e, \; m_b \leq k \leq m_e, and \\
-				\forall A_{p} \in A' \quad s'_{pqr} > 0.
-			\end{array}			
-		\]
+		% \[
+			\begin{align*}
+				s'_{pqr} & = s_{pjk} \\
+				1 \leq & \; p \leq |A| \\
+				1 \leq & \; q \leq d_e-d_b+1 \\
+				1 \leq & \; r \leq m_e-m_b+1 \\
+				d_b \leq & \; j \leq d_e \\
+				m_b \leq & \; k \leq m_e \\
+				\forall A_{p} \in A' & \quad s'_{pqr} > 0.
+			\end{align*}
+		% \]
 
 \end{description}
 
