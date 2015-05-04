@@ -31,3 +31,7 @@ curl -k -u admin:admin -X POST -H 'Content-Type: application/json'
 `$ cd $GOPATH/src/github.com/mcesarhm/geek-accounting/go-server`
 
 `$ go test -tags 'test inmemory' ./...`
+
+To test with App Engine:
+
+`$ goapp test -tags 'test appengine' ./...`
