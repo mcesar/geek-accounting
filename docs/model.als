@@ -13,7 +13,8 @@ sig MI { start: M, end: M } { start.lte[end] }
 sig T { 
 	m: MI, 
 	d: DI, 
-	e: A -> one Int } {	
+	e: A -> one Int } 
+	{	
 	#e.Int > 1
 	not 0 in e[A]
 	this.summation = 0
