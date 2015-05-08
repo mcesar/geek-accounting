@@ -45,8 +45,8 @@ pred interestingSpace (s : S)  {
 	}
 
 pred show(s: S) {
-		all v: T.e[A] | v >= -5 and v <= 5
-		interestingSpace[s]
+	all v: T.e[A] | v >= -5 and v <= 5
+	interestingSpace[s]
 	}
 run show for 5 but 2 S, 3 A, 8 Int
 
@@ -54,5 +54,5 @@ pred showAppend(disj s, s', s'': S) {
 	all v: T.e[A] | v >= -5 and v <= 5
 	append[s, s', s'']
 	interestingSpace[s'']
-}
+	}
 run showAppend for 10 but 3 S, 6 T, 3 A, 2 D, 2 M, 2 DI, 2 MI, 8 Int
