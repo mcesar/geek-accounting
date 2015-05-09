@@ -5,7 +5,7 @@
 \usepackage{interval}
 \usepackage[T1]{fontenc}
 \usepackage{pdftexcmds}
-\usepackage{minted}
+% \usepackage{minted}
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.8}
 
@@ -22,10 +22,11 @@ A double-entry bookkeeping information system can be viewed as a three dimension
 where each dimension represents:
 
 \begin{itemize}
-	\item $a \in A$, where $A$ is a subset of a predefined set of accounts.
-	\item $d \in D$, where $D$ is a subset of all possible dates
-		in the Gregorian calendar.
-	\item $m \in M$, where $M$ is a subset of all possible discrete points in time, given a precision.
+	\item $a \in A$, where $A$ is a finite ordered subset of a predefined set of accounts.
+	\item $d \in D$, where $D$ is a finite ordered subset of all 
+		possible dates in the Gregorian calendar.
+	\item $m \in M$, where $M$ is a finite ordered subset of all 
+		possible discrete points in time, given a precision.
 \end{itemize}
 
 Figure~\ref{fig:deb-space-sample} shows a \emph{double-entry bookkeeping space} sample, 
@@ -112,14 +113,13 @@ A \emph{double-entry bookkeeping space} supports the following operations:
 \begin{description}
 	\item[\textsc{Append}$(S,S')$] append the space
 	$S'=\left(s'_{ijk}\right)$ to the space $S$,
-		such that, given the set $M$ associated with the space $S$ and
-		the set $M'$ associated with the space $S':
-		M \cap M' = \emptyset$, and
+		such that, exists a set $M$ which is associated with both space $S$ and
+		space $S'$. Let $k_1$ be the maximum value of $k$, such that
+		$s_{ijk} \neq 0$, and let $k_2$ be the minimum value of $k$,
+		such that $s'_{ijk} \neq 0$. Given that $k_1 < k_2$, then:
 		\[
-			s_{ij(|M|+k)} = s'_{ijk}, \; 1 \leq k \leq |M'|.
+			s_{ijk} = s'_{ijk}, \; \forall i \; \forall j, \; k_2 \leq k \leq |M|.
 		\]
-		The new set $M \cup M'$ will be the new set associated with $S$
-		instead of $M$.
 
 	\item[\textsc{Projection}$(S, D^{\langle n \rangle}, M^{\langle m \rangle})$] 
 		returns a potentially smaller space $S'=\left(s'_{pqr}\right)$,
@@ -134,26 +134,31 @@ A \emph{double-entry bookkeeping space} supports the following operations:
 		\end{align*}
 
 	\item[\textsc{Slice}$(S, A', D^{\langle n \rangle}, M^{\langle m \rangle})$] 
-		returns a potentially smaller space $S'=\left(s'_{pqr}\right)$, 
-		where $D^{\langle n \rangle} = \{\langle x_i, y_i \rangle\}$, and
-		$M^{\langle m \rangle} = \{\langle u_i, w_i \rangle\}$,
+		returns another space $S'=\left(s'_{ijk}\right)$, 
+		where $D^{\langle n \rangle} = \{\langle x_p, y_p \rangle\}$, and
+		$M^{\langle m \rangle} = \{\langle u_q, w_q \rangle\}$,
 		such that:
-		\begin{align*}
-			s'_{pqr} & = s_{pjk} \\
-			1 \leq & \; p \leq |A| \\
-			1 \leq & \; q \leq \sum_{i=1}^{n}{y_i-x_i+1} \\
-			1 \leq & \; r \leq \sum_{i=1}^{m}{w_i-u_i+1} \\
-			x_i \leq & \; j \leq y_i, \forall i \in \{1,\cdots,n\} \\
-			u_i \leq & \; k \leq w_i, \forall i \in \{1,\cdots,m\} \\
-			\forall A_{p} \in A' & \quad s'_{pqr} \neq 0.
-		\end{align*}
+		\[
+			s'_{ijk} = 
+			\begin{cases}
+				s_{ijk}, & \text{if } 
+					f(j, k) \cap A' \neq \emptyset \land
+					D_j \in \bigcup\limits_{i=1}^{n} x_i, \ldots, y_i \land 
+					M_k \in \bigcup\limits_{i=1}^{m} u_i, \ldots, v_i \\
+				0, & \text{otherwise}
+			\end{cases}
+		\]
+		where:
+		\[
+			f(j,k) = \{ A_i : s_{ijk} \neq 0 \land 1 \leq i \leq |A| \}
+		\]
 
 \end{description}
 
 \section{Alloy Model} % (fold)
 \label{sec:alloy_model}
 
-\inputminted{alloy}{model.als}%
+% \inputminted{alloy}{model.als}%
 
 % section alloy_model (end)
 
