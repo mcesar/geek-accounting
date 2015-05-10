@@ -9,6 +9,10 @@
 \usepackage{pgfplots}
 \pgfplotsset{compat=1.8}
 
+\renewcommand*{\mathellipsis}{%
+  \mathinner{{\ldotp}{\ldotp}{\ldotp}}%
+}
+
 \begin{document}
 
 \title{A Model of Double-Entry Bookkeeping Systems}
@@ -26,7 +30,7 @@ where each dimension represents:
 	\item $d \in D$, where $D$ is a finite ordered subset of all 
 		possible dates in the Gregorian calendar.
 	\item $m \in M$, where $M$ is a finite ordered subset of all 
-		possible discrete points in time, given a precision.
+		possible discrete moments in time, given a precision.
 \end{itemize}
 
 Figure~\ref{fig:deb-space-sample} shows a \emph{double-entry bookkeeping space} sample, 
@@ -80,7 +84,7 @@ with one cube representing the debit and another representing the credit.
 
 As, by definition, a double-entry transaction must have debits' sum
 equals to credits' sum, we can deduce that the values for both
-cubes are the same, in this example.
+cubes $(4,1,1)$ and $(6,1,1)$ are the same, in this example.
 
 More specifically, we can have a \emph{double-entry bookkeeping space} 
 represented by a three dimensional array $S$:
@@ -106,7 +110,7 @@ and credits by negative integers.
 
 In the following description of the operations, the notation $\langle x, y \rangle$ means
 a range specification, and $R^{\langle n \rangle}$ means a set of $n$
-range specifications.
+range specifications based on the ordered set $R$.
 
 A \emph{double-entry bookkeeping space} supports the following operations:
 
@@ -121,36 +125,56 @@ A \emph{double-entry bookkeeping space} supports the following operations:
 			s_{ijk} = s'_{ijk}, \; \forall i \; \forall j, \; k_2 \leq k \leq |M|.
 		\]
 
-	\item[\textsc{Projection}$(S, D^{\langle n \rangle}, M^{\langle m \rangle})$] 
-		returns a potentially smaller space $S'=\left(s'_{pqr}\right)$,
-		where $D^{\langle n \rangle} = \{\langle x_i, y_i \rangle\}$, and
-		$M^{\langle m \rangle} = \{\langle u_i, w_i \rangle\}$,
-		such that:
+	\item[\textsc{Projection}$(S, A', D^{\langle n \rangle}, M^{\langle m \rangle})$] 
+		returns another space $S'=\left(s'_{pqr}\right)$,
+		where $A' \subseteq A$, and $D^{\langle n \rangle} = 
+		\{\langle x_1, y_1 \rangle, \ldots, \langle x_n, y_n \rangle\}$, and
+		$M^{\langle m \rangle} = 
+		\{\langle v_1, w_1 \rangle, \ldots, \langle v_m, w_m \rangle \}$, and
+		for all distinct $\{\langle x_i, y_i \rangle\}$ and $\{\langle x_j, y_j \rangle\}$,
+		$\{x_i \ldots y_i\} \cap \{x_j \ldots y_j\} = \emptyset$, and
+		for all distinct $\{\langle v_i, w_i \rangle\}$ and $\{\langle v_j, w_j \rangle\}$,
+		$\{v_i \ldots w_i\} \cap \{v_j \ldots w_j\} = \emptyset$. Then:
+		\[
+			s'_{ijk} = 
+			\begin{cases}
+				\sigma_{ijk}, & 
+					\text{if } f(j, k) \neq \emptyset \land 
+						D_j \in X \land M_k \in V \\
+				0, & \text{otherwise},
+			\end{cases} \\
+		\]
+		Where:
 		\begin{align*}
-			s'_{pqr} &= \sum_{j=x_q}^{y_q}{\sum_{k=u_r}^{w_r}{s_{pjk}}} \\ 
-			1 \leq & \; p \leq |A| \\
-			1 \leq & \; q \leq n \\
-			1 \leq & \; r \leq m.
+			\sigma_{ijk} &= \sum_{p=j}^{j+|x_r, \ldots, y_r|-1} \;
+				{\sum_{q=k}^{k+|v_s, \ldots, w_s|-1}{s_{ipq}}}, \\
+			X &= \{ x_1, \ldots, x_n \}, \\
+			V &= \{ v_1, \ldots, v_m \}, \\
+			x_r &= D_j, \\
+			v_s &= M_k, \\
+			f(j,k) &= \{ A_i : \sigma_{ijk} \neq 0 \} \cap A', \; 1 \leq i \leq |A|.
 		\end{align*}
 
 	\item[\textsc{Slice}$(S, A', D^{\langle n \rangle}, M^{\langle m \rangle})$] 
 		returns another space $S'=\left(s'_{ijk}\right)$, 
-		where $D^{\langle n \rangle} = \{\langle x_p, y_p \rangle\}$, and
-		$M^{\langle m \rangle} = \{\langle u_q, w_q \rangle\}$,
+		where $A' \subseteq A $, and $D^{\langle n \rangle} = 
+		\{\langle x_1, y_1 \rangle, \ldots, \langle x_n, y_n \rangle\}$, and
+		$M^{\langle m \rangle} = 
+		\{\langle v_1, w_1 \rangle, \ldots, \langle v_m, w_m \rangle \}$,
 		such that:
 		\[
 			s'_{ijk} = 
 			\begin{cases}
 				s_{ijk}, & \text{if } 
-					f(j, k) \cap A' \neq \emptyset \land
-					D_j \in \bigcup\limits_{i=1}^{n} x_i, \ldots, y_i \land 
-					M_k \in \bigcup\limits_{i=1}^{m} u_i, \ldots, v_i \\
-				0, & \text{otherwise}
+					f(j, k) \neq \emptyset \land
+					D_j \in \bigcup\limits_{p=1}^{n} \{ x_p, \ldots, y_p \} \land 
+					M_k \in \bigcup\limits_{q=1}^{m} \{ v_q, \ldots, w_q \} \\
+				0, & \text{otherwise},
 			\end{cases}
 		\]
 		where:
 		\[
-			f(j,k) = \{ A_i : s_{ijk} \neq 0 \land 1 \leq i \leq |A| \}
+			f(j,k) = \{ A_i : s_{ijk} \neq 0 \} \cap A', \; 1 \leq i \leq |A|.
 		\]
 
 \end{description}
