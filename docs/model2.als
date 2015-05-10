@@ -26,10 +26,6 @@ sig Index {
 sig DI { start: D, end: D } { start.lte[end] }
 sig MI { start: M, end: M } { start.lte[end] }
 
-fact SumOfTheWholeSpaceIsZero {
-	all s: S | (sum idx: s.arr.univ | s.arr[idx]) = 0
-	}
-
 fact NoDuplicatedIntervals {
 	no disj di, di': DI | di.start = di'.start and di.end = di'.end
 	no disj mi, mi': MI | mi.start = mi'.start and mi.end = mi'.end
@@ -64,6 +60,10 @@ pred projection (disj s, s': S, a': set A, d: set DI, m: set MI) {
 					idx.i = idx'.i and idx.j in d'.pos and idx.k in m'.pos } |
 				idx'.j = d'.start.pos and idx'.k = m'.start.pos and
 					s'.arr[idx'] = (sum p: plane | s.arr[p])
+	}
+
+fact SumOfTheWholeSpaceIsZero {
+	all s: S | (sum idx: s.arr.univ | s.arr[idx]) = 0
 	}
 
 assert NoNonEligibleSpacesHaveAnSlice {
