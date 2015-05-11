@@ -1,12 +1,12 @@
 package deb
 
-type Account uint16
+type Account uint32
 type Date uint32
 type Moment uint64
 type DateRange struct{ Start, End Date }
 type MomentRange struct{ Start, End Moment }
-type Array [][][]int64
 type Entries map[Account]int64
+
 type Transaction struct {
 	Moment  Moment
 	Date    Date
