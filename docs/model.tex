@@ -126,7 +126,7 @@ A \emph{double-entry bookkeeping space} supports the following operations:
 		\]
 
 	\item[\textsc{Projection}$(S, A', D^{\langle n \rangle}, M^{\langle m \rangle})$] 
-		returns another space $S'=\left(s'_{pqr}\right)$,
+		returns another space $S'=\left(s'_{ijk}\right)$,
 		where $A' \subseteq A$, and $D^{\langle n \rangle} = 
 		\{\langle x_1, y_1 \rangle, \ldots, \langle x_n, y_n \rangle\}$, and
 		$M^{\langle m \rangle} = 
@@ -144,7 +144,7 @@ A \emph{double-entry bookkeeping space} supports the following operations:
 				0, & \text{otherwise},
 			\end{cases} \\
 		\]
-		Where:
+		where:
 		\begin{align*}
 			\sigma_{ijk} &= \sum_{p=j}^{j+|x_r, \ldots, y_r|-1} \;
 				{\sum_{q=k}^{k+|v_s, \ldots, w_s|-1}{s_{ipq}}}, \\
