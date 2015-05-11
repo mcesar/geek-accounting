@@ -90,7 +90,7 @@ More specifically, we can have a \emph{double-entry bookkeeping space}
 represented by a three dimensional array $S$:
 \begin{equation}
 	\label{eq:space}
-	S = \left(s_{ijk}\right), 
+	S = \left(s_{ijk}\right), where
 	\; 1 \leq i \leq |A|, \; 1 \leq j \leq |D|, \; 1 \leq k \leq |M|, 
 	\; s_{ijk} \in \mathbb{Z}
 \end{equation}
@@ -99,7 +99,7 @@ Satisfying the following property:
 
 \begin{equation}
 	\label{eq:property}
-	\forall j \; \forall k, \sum_{i=1}^{|A|}{s_{ijk}} = 0
+	\forall j \; \forall k: \sum_{i=1}^{|A|}{s_{ijk}} = 0
 \end{equation}
 
 The equations~\eqref{eq:space}~and~\eqref{eq:property}
@@ -122,7 +122,7 @@ A \emph{double-entry bookkeeping space} supports the following operations:
 		$s_{ijk} \neq 0$, and let $k_2$ be the minimum value of $k$,
 		such that $s'_{ijk} \neq 0$. Given that $k_1 < k_2$, then:
 		\[
-			s_{ijk} = s'_{ijk}, \; \forall i \; \forall j, \; k_2 \leq k \leq |M|.
+			s_{ijk} = s'_{ijk}, \; \forall i \; \forall j, where \; k_2 \leq k \leq |M|.
 		\]
 
 	\item[\textsc{Projection}$(S, A', D^{\langle n \rangle}, M^{\langle m \rangle})$] 
