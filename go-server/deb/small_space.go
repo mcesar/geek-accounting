@@ -1,14 +1,21 @@
 package deb
 
-type smallSpace Array
+type smallSpace struct {
+	arr                      Array
+	dateOffset, momentOffset int
+}
 
 func NewSmallSpace(arr Array) Space {
-	ss := make(smallSpace, len(arr))
+	return NewSmallSpaceWithOffset(arr, 0, 0)
+}
+
+func NewSmallSpaceWithOffset(arr Array, dateOffset, momentOffset int) Space {
+	ss := smallSpace{make(Array, len(arr)), dateOffset, momentOffset}
 	for i, plane := range arr {
-		ss[i] = make([][]int64, len(plane))
+		ss.arr[i] = make([][]int64, len(plane))
 		for j, col := range plane {
-			ss[i][j] = make([]int64, len(col))
-			copy(ss[i][j], col)
+			ss.arr[i][j] = make([]int64, len(col))
+			copy(ss.arr[i][j], col)
 		}
 	}
 	return &ss
@@ -28,18 +35,18 @@ func (ss *smallSpace) Projection(a []Account, d []DateRange, m []MomentRange) Sp
 func (ss *smallSpace) Transactions() chan *Transaction {
 	out := make(chan *Transaction)
 	go func() {
-		arr := Array(*ss)
+		arr := ss.arr
 		if len(arr) > 0 && len(arr[0]) > 0 && len(arr[0][0]) > 0 {
 			for k := 0; k < len(arr[0][0]); k++ {
 				for j := 0; j < len(arr[0]); j++ {
-					t := Transaction{Moment(k+1), Date(j+1), make(Entries)}
+					t := Transaction{Moment(k + 1 + ss.momentOffset), Date(j + 1 + ss.dateOffset), make(Entries)}
 					for i := 0; i < len(arr); i++ {
 						t.Entries[Account(i+1)] = arr[i][j][k]
 					}
 					out <- &t
 				}
 			}
-		}		
+		}
 		close(out)
 	}()
 	return out
