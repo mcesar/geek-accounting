@@ -14,6 +14,9 @@ func NewSmallSpaceWithOffset(arr Array, dateOffset, momentOffset int) Space {
 }
 
 func (ss *smallSpace) Append(s Space) {
+	if other_ss, ok := s.(*smallSpace); ok {
+		ss.arr.Append(other_ss.arr, other_ss.dateOffset, other_ss.momentOffset)
+	}
 }
 
 func (ss *smallSpace) Slice(a []Account, d []DateRange, m []MomentRange) Space {
