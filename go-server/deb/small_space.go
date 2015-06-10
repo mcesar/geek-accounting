@@ -102,7 +102,8 @@ func (ss *smallSpace) Transactions() chan *Transaction {
 			x, y, z := ss.arr.Dimensions()
 			for k := 0; k < z; k++ {
 				for j := 0; j < y; j++ {
-					t := Transaction{Moment(k + 1 + ss.momentOffset), Date(j + 1 + ss.dateOffset), make(Entries)}
+					t := Transaction{Moment(k + 1 + ss.momentOffset), 
+							Date(j + 1 + ss.dateOffset), make(Entries)}
 					for i := 0; i < x; i++ {
 						if ss.arr[i][j][k] != 0 {
 							t.Entries[Account(i+1)] = ss.arr[i][j][k]
