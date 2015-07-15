@@ -22,19 +22,20 @@
 
 \section{Double-Entry Bookkeeping Space}
 
-A double-entry bookkeeping information system can be viewed as a three dimensional space,
-where each dimension represents:
+We can view a double-entry bookkeeping information system as a 
+three dimensional space $S=\{(a,d,m)\mid a\in A, d\in D, m\in M\}$, where,
 
 \begin{itemize}
-	\item $a \in A$, where $A$ is a finite ordered subset of a predefined set of accounts.
-	\item $d \in D$, where $D$ is a finite ordered subset of all 
+	\item $A$ is a finite ordered subset of a predefined set of accounts.
+	\item $D$ is a finite ordered subset of all 
 		possible dates in the Gregorian calendar.
-	\item $m \in M$, where $M$ is a finite ordered subset of all 
+	\item $M$ is a finite ordered subset of all 
 		possible discrete moments in time, given a precision.
 \end{itemize}
 
 Figure~\ref{fig:deb-space-sample} shows a \emph{double-entry bookkeeping space} sample, 
-where each cube represents a integer value different from zero.
+where each cube represents a tuple of the form $(a,d,m)$ and is associated with
+a integer value different from zero.
 Consider the cubes $(4,1,1)$ and $(6,1,1)$. They share the same moment 
 and date---the only difference are the accounts. 
 We can interpret this pair of cubes as a transaction recorded in the system,
@@ -99,11 +100,11 @@ Satisfying the following property:
 
 \begin{equation}
 	\label{eq:property}
-	\forall j \; \forall k: \sum_{i=1}^{|A|}{s_{ijk}} = 0
+	\forall j, k\left(\sum_{i=1}^{|A|}{s_{ijk}} = 0\right)
 \end{equation}
 
-The equations~\eqref{eq:space}~and~\eqref{eq:property}
-assume that debits are represented by positive integers
+In equations~\eqref{eq:space}~and~\eqref{eq:property}
+we assume that debits are represented by positive integers
 and credits by negative integers.
 
 \section{Operations}
@@ -122,7 +123,7 @@ A \emph{double-entry bookkeeping space} supports the following operations:
 		$s_{ijk} \neq 0$, and let $k_2$ be the minimum value of $k$,
 		such that $s'_{ijk} \neq 0$. Given that $k_1 < k_2$, then:
 		\[
-			s_{ijk} = s'_{ijk}, \; \forall i \; \forall j, where \; k_2 \leq k \leq |M|.
+			\forall i,j\left(s_{ijk} = s'_{ijk}\right), where \; k_2 \leq k \leq |M|.
 		\]
 
 	\item[\textsc{Projection}$(S, A', D^{\langle n \rangle}, M^{\langle m \rangle})$] 
