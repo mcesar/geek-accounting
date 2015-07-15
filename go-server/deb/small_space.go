@@ -28,7 +28,7 @@ func (ss *smallSpace) Slice(a []Account, d []DateRange, m []MomentRange) Space {
 		for j := 0; j < y; j++ {
 			for k := 0; k < z; k++ {
 				if !containsDate(d, Date(j+1+ss.dateOffset)) ||
-						!containsMoment(m, Moment(k+1+ss.momentOffset)) {
+					!containsMoment(m, Moment(k+1+ss.momentOffset)) {
 					result.arr[i][j][k] = 0
 				}
 			}
@@ -46,7 +46,7 @@ func (ss *smallSpace) Slice(a []Account, d []DateRange, m []MomentRange) Space {
 			if !found {
 				for i := 0; i < x; i++ {
 					result.arr[i][j][k] = 0
-				}				
+				}
 			}
 		}
 	}
@@ -64,7 +64,7 @@ func (ss *smallSpace) Projection(a []Account, d []DateRange, m []MomentRange) Sp
 				j_end := xmath.Min(int(each_dr.End-Date(ss.dateOffset)), y)
 				k_start := xmath.Min(int(each_mr.Start-1-Moment(ss.momentOffset)), z)
 				k_end := xmath.Min(int(each_mr.End-Moment(ss.momentOffset)), z)
-				for j := j_start; j < j_end ; j++ {
+				for j := j_start; j < j_end; j++ {
 					for k := k_start; k < k_end; k++ {
 						sum += result.arr[i][j][k]
 					}
@@ -76,8 +76,8 @@ func (ss *smallSpace) Projection(a []Account, d []DateRange, m []MomentRange) Sp
 	for j := 0; j < y; j++ {
 		for k := 0; k < z; k++ {
 			found := false
-			if containsDateStart(d, Date(j+1+ss.dateOffset)) && 
-					containsMomentStart(m, Moment(k+1+ss.momentOffset)) {
+			if containsDateStart(d, Date(j+1+ss.dateOffset)) &&
+				containsMomentStart(m, Moment(k+1+ss.momentOffset)) {
 				for i := 0; i < x; i++ {
 					if containsAccount(a, Account(i+1)) && result.arr[i][j][k] != 0 {
 						found = true
@@ -88,7 +88,7 @@ func (ss *smallSpace) Projection(a []Account, d []DateRange, m []MomentRange) Sp
 			if !found {
 				for i := 0; i < x; i++ {
 					result.arr[i][j][k] = 0
-				}				
+				}
 			}
 		}
 	}
@@ -102,8 +102,8 @@ func (ss *smallSpace) Transactions() chan *Transaction {
 			x, y, z := ss.arr.Dimensions()
 			for k := 0; k < z; k++ {
 				for j := 0; j < y; j++ {
-					t := Transaction{Moment(k + 1 + ss.momentOffset), 
-							Date(j + 1 + ss.dateOffset), make(Entries)}
+					t := Transaction{Moment(k + 1 + ss.momentOffset),
+						Date(j + 1 + ss.dateOffset), make(Entries)}
 					for i := 0; i < x; i++ {
 						if ss.arr[i][j][k] != 0 {
 							t.Entries[Account(i+1)] = ss.arr[i][j][k]
