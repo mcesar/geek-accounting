@@ -39,24 +39,40 @@ func (ls *largeSpace) Slice(a []Account, d []DateRange, m []MomentRange) Space {
 	out := make(chan *Transaction)
 	go func() {
 		defer close(out)
-		for _, db := range ls.dataBlocks {
-			for i := 0; i < len(db.m); i++ {
-				if containsMoment(m, Moment(db.m[i])) && containsDate(d, Date(db.d[i])) {
-					for j := db.b[i*2]; j < db.b[i*2+1]; j++ {
-						if containsAccount(a, Account(db.a[j])) {
-							out <- db.newTransaction(i)
-							break
-						}
-					}
-				}
-			}
-		}
+		ls.iterateWithFilter(a, d, m, func(db *dataBlock, i int) { out <- db.newTransaction(i) })
 	}()
 	return channelSpace(out)
 }
 
 func (ls *largeSpace) Projection(a []Account, d []DateRange, m []MomentRange) Space {
-	return nil
+	type key struct {
+		moment Moment
+		date   Date
+	}
+	transactions := map[key]*Transaction{}
+	ls.iterateWithFilter(a, d, m, func(db *dataBlock, i int) {
+		k := key{startMoment(m, Moment(db.m[i])), startDate(d, Date(db.d[i]))}
+		nt := db.newTransaction(i)
+		if t, ok := transactions[k]; !ok {
+			transactions[k] = nt
+		} else {
+			for ek, ev := range nt.Entries {
+				if ov, ok := t.Entries[ek]; ok {
+					t.Entries[ek] = ov + ev
+				} else {
+					t.Entries[ek] = ev
+				}
+			}
+		}
+	})
+	out := make(chan *Transaction)
+	go func() {
+		defer close(out)
+		for _, t := range transactions {
+			out <- t
+		}
+	}()
+	return channelSpace(out)
 }
 
 func (ls *largeSpace) Transactions() chan *Transaction {
@@ -110,6 +126,22 @@ func (ls *largeSpace) newDataBlock() *dataBlock {
 	return db
 }
 
+func (ls *largeSpace) iterateWithFilter(a []Account, d []DateRange, m []MomentRange,
+	f func(*dataBlock, int)) {
+	for _, db := range ls.dataBlocks {
+		for i := 0; i < len(db.m); i++ {
+			if containsMoment(m, Moment(db.m[i])) && containsDate(d, Date(db.d[i])) {
+				for j := db.b[i*2]; j < db.b[i*2+1]; j++ {
+					if containsAccount(a, Account(db.a[j])) {
+						f(db, i)
+						break
+					}
+				}
+			}
+		}
+	}
+}
+
 func (db *dataBlock) append(t *Transaction) {
 	mLen := len(db.m)
 	aLen := len(db.a)
@@ -128,4 +160,22 @@ func (db *dataBlock) append(t *Transaction) {
 	}
 	db.b[mLen*2] = uint16(aLen)
 	db.b[mLen*2+1] = uint16(aLen + len(t.Entries))
+}
+
+func startDate(d []DateRange, elem Date) Date {
+	for _, each := range d {
+		if each.Start <= elem && each.End >= elem {
+			return each.Start
+		}
+	}
+	return 0
+}
+
+func startMoment(m []MomentRange, elem Moment) Moment {
+	for _, each := range m {
+		if each.Start <= elem && each.End >= elem {
+			return each.Start
+		}
+	}
+	return 0
 }
