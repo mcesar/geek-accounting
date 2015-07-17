@@ -14,8 +14,8 @@ type Transaction struct {
 }
 
 type Space interface {
-	Append(s Space)
-	Slice(a []Account, d []DateRange, m []MomentRange) Space
-	Projection(a []Account, d []DateRange, m []MomentRange) Space
+	Append(Space)
+	Slice([]Account, []DateRange, []MomentRange) Space
+	Projection([]Account, []DateRange, []MomentRange) Space
 	Transactions() chan *Transaction
 }

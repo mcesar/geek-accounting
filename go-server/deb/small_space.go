@@ -1,6 +1,10 @@
 package deb
 
-import xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
+import (
+	"math"
+
+	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
+)
 
 type smallSpace struct {
 	arr                      Array
@@ -17,7 +21,41 @@ func NewSmallSpaceWithOffset(arr Array, dateOffset, momentOffset int) Space {
 
 func (ss *smallSpace) Append(s Space) {
 	if other_ss, ok := s.(*smallSpace); ok {
-		ss.arr.Append(other_ss.arr, other_ss.dateOffset, other_ss.momentOffset)
+		ss.arr.Append(&other_ss.arr, other_ss.dateOffset, other_ss.momentOffset)
+	} else {
+		// Computes the array size
+		var minDate, minMoment, maxAccount, maxDate, maxMoment uint64
+		minDate, minMoment = math.MaxUint64, math.MaxUint64
+		for t := range s.Transactions() {
+			if t.Date < Date(minDate) {
+				minDate = uint64(t.Date)
+			}
+			if t.Moment < Moment(minMoment) {
+				minMoment = uint64(t.Moment)
+			}
+			for a, _ := range t.Entries {
+				if a > Account(maxAccount) {
+					maxAccount = uint64(a)
+				}
+			}
+			if t.Date > Date(maxDate) {
+				maxDate = uint64(t.Date)
+			}
+			if t.Moment > Moment(maxMoment) {
+				maxMoment = uint64(t.Moment)
+			}
+		}
+		if maxAccount == 0 || maxDate == 0 || maxMoment == 0 {
+			return
+		}
+		// Builds the array
+		other_arr := NewArray(int(maxAccount), int(maxDate-minDate), int(maxMoment-minMoment))
+		for t := range s.Transactions() {
+			for a, v := range t.Entries {
+				other_arr[a-1][t.Date-1][t.Moment-1] = v
+			}
+		}
+		ss.arr.Append(&other_arr, int(minDate), int(minMoment))
 	}
 }
 
@@ -98,24 +136,25 @@ func (ss *smallSpace) Projection(a []Account, d []DateRange, m []MomentRange) Sp
 func (ss *smallSpace) Transactions() chan *Transaction {
 	out := make(chan *Transaction)
 	go func() {
-		if !ss.arr.Empty() {
-			x, y, z := ss.arr.Dimensions()
-			for k := 0; k < z; k++ {
-				for j := 0; j < y; j++ {
-					t := Transaction{Moment(k + 1 + ss.momentOffset),
-						Date(j + 1 + ss.dateOffset), make(Entries)}
-					for i := 0; i < x; i++ {
-						if ss.arr[i][j][k] != 0 {
-							t.Entries[Account(i+1)] = ss.arr[i][j][k]
-						}
+		defer close(out)
+		if ss.arr.Empty() {
+			return
+		}
+		x, y, z := ss.arr.Dimensions()
+		for k := 0; k < z; k++ {
+			for j := 0; j < y; j++ {
+				t := Transaction{Moment(k + 1 + ss.momentOffset),
+					Date(j + 1 + ss.dateOffset), make(Entries)}
+				for i := 0; i < x; i++ {
+					if ss.arr[i][j][k] != 0 {
+						t.Entries[Account(i+1)] = ss.arr[i][j][k]
 					}
-					if len(t.Entries) > 0 {
-						out <- &t
-					}
+				}
+				if len(t.Entries) > 0 {
+					out <- &t
 				}
 			}
 		}
-		close(out)
 	}()
 	return out
 }
