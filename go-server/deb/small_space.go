@@ -19,14 +19,16 @@ func NewSmallSpaceWithOffset(arr Array, dateOffset, momentOffset int) Space {
 	return &smallSpace{arr.Copy(), dateOffset, momentOffset}
 }
 
-func (ss *smallSpace) Append(s Space) {
+func (ss *smallSpace) Append(s Space) error {
 	if other_ss, ok := s.(*smallSpace); ok {
 		ss.arr.Append(&other_ss.arr, other_ss.dateOffset, other_ss.momentOffset)
+		return nil
 	} else {
 		// Computes the array size
 		var minDate, minMoment, maxAccount, maxDate, maxMoment uint64
 		minDate, minMoment = math.MaxUint64, math.MaxUint64
-		for t := range s.Transactions() {
+		c, errc := s.Transactions()
+		for t := range c {
 			if t.Date < Date(minDate) {
 				minDate = uint64(t.Date)
 			}
@@ -45,21 +47,26 @@ func (ss *smallSpace) Append(s Space) {
 				maxMoment = uint64(t.Moment)
 			}
 		}
+		if err := <-errc; err != nil {
+			return err
+		}
 		if maxAccount == 0 || maxDate == 0 || maxMoment == 0 {
-			return
+			return nil
 		}
 		// Builds the array
 		other_arr := NewArray(int(maxAccount), int(maxDate-minDate), int(maxMoment-minMoment))
-		for t := range s.Transactions() {
+		c, errc = s.Transactions()
+		for t := range c {
 			for a, v := range t.Entries {
 				other_arr[a-1][t.Date-1][t.Moment-1] = v
 			}
 		}
 		ss.arr.Append(&other_arr, int(minDate), int(minMoment))
+		return <-errc
 	}
 }
 
-func (ss *smallSpace) Slice(a []Account, d []DateRange, m []MomentRange) Space {
+func (ss *smallSpace) Slice(a []Account, d []DateRange, m []MomentRange) (Space, error) {
 	result := smallSpace{ss.arr.Copy(), ss.dateOffset, ss.momentOffset}
 	x, y, z := ss.arr.Dimensions()
 	for i := 0; i < x; i++ {
@@ -88,10 +95,10 @@ func (ss *smallSpace) Slice(a []Account, d []DateRange, m []MomentRange) Space {
 			}
 		}
 	}
-	return &result
+	return &result, nil
 }
 
-func (ss *smallSpace) Projection(a []Account, d []DateRange, m []MomentRange) Space {
+func (ss *smallSpace) Projection(a []Account, d []DateRange, m []MomentRange) (Space, error) {
 	result := smallSpace{ss.arr.Copy(), ss.dateOffset, ss.momentOffset}
 	x, y, z := ss.arr.Dimensions()
 	for i := 0; i < x; i++ {
@@ -130,11 +137,12 @@ func (ss *smallSpace) Projection(a []Account, d []DateRange, m []MomentRange) Sp
 			}
 		}
 	}
-	return &result
+	return &result, nil
 }
 
-func (ss *smallSpace) Transactions() chan *Transaction {
+func (ss *smallSpace) Transactions() (chan *Transaction, chan error) {
 	out := make(chan *Transaction)
+	errc := make(chan error, 1)
 	go func() {
 		defer close(out)
 		if ss.arr.Empty() {
@@ -155,8 +163,9 @@ func (ss *smallSpace) Transactions() chan *Transaction {
 				}
 			}
 		}
+		errc <- nil
 	}()
-	return out
+	return out, errc
 }
 
 func containsAccount(a []Account, elem Account) bool {

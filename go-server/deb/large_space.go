@@ -3,56 +3,69 @@ package deb
 import "fmt"
 
 type largeSpace struct {
-	blockSize  uint
-	dataBlocks []*dataBlock
+	blockSize uint
+	in        func() chan *dataBlock
+	out       chan *dataBlock
+	errc      chan error
 }
 
 type dataBlock struct {
-	m []uint64
-	d []uint32
-	a []uint32
-	v []int64
-	b []uint16
+	key interface{}
+	M   []int64
+	D   []int32
+	A   []int32
+	V   []int64
+	B   []int16
 }
 
-func NewLargeSpace(blockSize uint) *largeSpace {
-	ls := largeSpace{blockSize: blockSize}
-	return &ls
+func NewLargeSpace(blockSize uint, in func() chan *dataBlock, out chan *dataBlock,
+	errc chan error) *largeSpace {
+	return &largeSpace{blockSize: blockSize, in: in, out: out, errc: errc}
 }
 
-func (ls *largeSpace) Append(s Space) {
-	for t := range s.Transactions() {
-		db := ls.lastDataBlock()
-		if db == nil || uint(len(db.a)+len(t.Entries)) > ls.memberSize() {
-			db = ls.newDataBlock()
-			if ls.dataBlocks == nil {
-				ls.dataBlocks = []*dataBlock{db}
-			} else {
-				ls.dataBlocks = append(ls.dataBlocks, db)
+func (ls *largeSpace) Append(s Space) error {
+	c, errc := s.Transactions()
+	for t := range c {
+		if block, err := ls.freeBlock(t); err != nil {
+			return err
+		} else {
+			if block == nil {
+				block = ls.newDataBlock()
+			}
+			block.append(t)
+			ls.out <- block
+			if err := <-ls.errc; err != nil {
+				return err
 			}
 		}
-		db.append(t)
 	}
+	if err := <-errc; err != nil {
+		return err
+	}
+	return nil
 }
 
-func (ls *largeSpace) Slice(a []Account, d []DateRange, m []MomentRange) Space {
+func (ls *largeSpace) Slice(a []Account, d []DateRange, m []MomentRange) (Space, error) {
 	out := make(chan *Transaction)
+	var err error
 	go func() {
 		defer close(out)
-		ls.iterateWithFilter(a, d, m, func(db *dataBlock, i int) { out <- db.newTransaction(i) })
+		err = ls.iterateWithFilter(a, d, m, func(block *dataBlock, i int) {
+			out <- block.newTransaction(i)
+		})
 	}()
-	return channelSpace(out)
+	return channelSpace(out), err
 }
 
-func (ls *largeSpace) Projection(a []Account, d []DateRange, m []MomentRange) Space {
+func (ls *largeSpace) Projection(a []Account, d []DateRange, m []MomentRange) (Space, error) {
 	type key struct {
 		moment Moment
 		date   Date
 	}
 	transactions := map[key]*Transaction{}
-	ls.iterateWithFilter(a, d, m, func(db *dataBlock, i int) {
-		k := key{startMoment(m, Moment(db.m[i])), startDate(d, Date(db.d[i]))}
-		nt := db.newTransaction(i)
+	err := ls.iterateWithFilter(a, d, m, func(block *dataBlock, i int) {
+		k := key{startMoment(m, Moment(block.M[i])), startDate(d, Date(block.D[i]))}
+		nt := block.newTransaction(i)
 		if t, ok := transactions[k]; !ok {
 			transactions[k] = nt
 		} else {
@@ -65,6 +78,9 @@ func (ls *largeSpace) Projection(a []Account, d []DateRange, m []MomentRange) Sp
 			}
 		}
 	})
+	if err != nil {
+		return nil, err
+	}
 	out := make(chan *Transaction)
 	go func() {
 		defer close(out)
@@ -72,94 +88,103 @@ func (ls *largeSpace) Projection(a []Account, d []DateRange, m []MomentRange) Sp
 			out <- t
 		}
 	}()
-	return channelSpace(out)
+	return channelSpace(out), nil
 }
 
-func (ls *largeSpace) Transactions() chan *Transaction {
+func (ls *largeSpace) Transactions() (chan *Transaction, chan error) {
 	out := make(chan *Transaction)
 	go func() {
 		defer close(out)
-		for _, db := range ls.dataBlocks {
-			for i := 0; i < len(db.m); i++ {
-				out <- db.newTransaction(i)
+		for block := range ls.in() {
+			for i := 0; i < len(block.M); i++ {
+				out <- block.newTransaction(i)
 			}
 		}
 	}()
-	return out
+	return out, ls.errc
 }
 
 func (ls *largeSpace) String() string {
-	blocksAsString := make([]string, len(ls.dataBlocks))
-	for i, db := range ls.dataBlocks {
-		blocksAsString[i] = fmt.Sprintf("%v", *db)
+	blocksAsString := []string{}
+	count := 0
+	for block := range ls.in() {
+		blocksAsString = append(blocksAsString, fmt.Sprintf("%v", *block))
+		count += 1
 	}
-	return fmt.Sprintf("{%v %v %v %v}",
-		ls.blockSize, len(ls.dataBlocks), ls.memberSize(), blocksAsString)
+	err := <-ls.errc
+	if err != nil {
+		panic(err)
+	}
+	return fmt.Sprintf("{%v %v %v %v}", ls.blockSize, count, ls.capacity(), blocksAsString)
 }
 
-func (db *dataBlock) newTransaction(i int) *Transaction {
-	t := Transaction{Moment(db.m[i]), Date(db.d[i]), make(Entries)}
-	for j := db.b[i*2]; j < db.b[i*2+1]; j++ {
-		t.Entries[Account(db.a[j])] = db.v[j]
+func (block *dataBlock) newTransaction(i int) *Transaction {
+	t := Transaction{Moment(block.M[i]), Date(block.D[i]), make(Entries)}
+	for j := block.B[i*2]; j < block.B[i*2+1]; j++ {
+		t.Entries[Account(block.A[j])] = block.V[j]
 	}
 	return &t
 }
 
-func (ls *largeSpace) lastDataBlock() *dataBlock {
-	if len(ls.dataBlocks) == 0 {
-		return nil
-	}
-	return ls.dataBlocks[len(ls.dataBlocks)-1]
-}
-
-func (ls *largeSpace) memberSize() uint {
+func (ls *largeSpace) capacity() uint {
 	return ls.blockSize / (64 + 32 + 32*2 + 64*2 + 16*2)
 }
 
+func (ls *largeSpace) freeBlock(t *Transaction) (*dataBlock, error) {
+	var result *dataBlock
+	for block := range ls.in() {
+		if uint(len(block.A)+len(t.Entries)) <= ls.capacity()*2 {
+			result = block
+		}
+	}
+	return result, <-ls.errc
+}
+
 func (ls *largeSpace) newDataBlock() *dataBlock {
-	db := new(dataBlock)
-	db.m = make([]uint64, 0, ls.memberSize())
-	db.d = make([]uint32, 0, ls.memberSize())
-	db.a = make([]uint32, 0, ls.memberSize()*2)
-	db.v = make([]int64, 0, ls.memberSize()*2)
-	db.b = make([]uint16, 0, ls.memberSize()*2)
-	return db
+	block := new(dataBlock)
+	block.M = make([]int64, 0, ls.capacity())
+	block.D = make([]int32, 0, ls.capacity())
+	block.A = make([]int32, 0, ls.capacity()*2)
+	block.V = make([]int64, 0, ls.capacity()*2)
+	block.B = make([]int16, 0, ls.capacity()*2)
+	return block
 }
 
 func (ls *largeSpace) iterateWithFilter(a []Account, d []DateRange, m []MomentRange,
-	f func(*dataBlock, int)) {
-	for _, db := range ls.dataBlocks {
-		for i := 0; i < len(db.m); i++ {
-			if containsMoment(m, Moment(db.m[i])) && containsDate(d, Date(db.d[i])) {
-				for j := db.b[i*2]; j < db.b[i*2+1]; j++ {
-					if containsAccount(a, Account(db.a[j])) {
-						f(db, i)
+	f func(*dataBlock, int)) error {
+	for block := range ls.in() {
+		for i := 0; i < len(block.M); i++ {
+			if containsMoment(m, Moment(block.M[i])) && containsDate(d, Date(block.D[i])) {
+				for j := block.B[i*2]; j < block.B[i*2+1]; j++ {
+					if containsAccount(a, Account(block.A[j])) {
+						f(block, i)
 						break
 					}
 				}
 			}
 		}
 	}
+	return <-ls.errc
 }
 
-func (db *dataBlock) append(t *Transaction) {
-	mLen := len(db.m)
-	aLen := len(db.a)
-	db.m = db.m[0 : mLen+1]
-	db.d = db.d[0 : mLen+1]
-	db.a = db.a[0 : aLen+len(t.Entries)]
-	db.v = db.v[0 : aLen+len(t.Entries)]
-	db.b = db.b[0 : mLen*2+2]
-	db.m[mLen] = uint64(t.Moment)
-	db.d[mLen] = uint32(t.Date)
+func (block *dataBlock) append(t *Transaction) {
+	mLen := len(block.M)
+	aLen := len(block.A)
+	block.M = block.M[0 : mLen+1]
+	block.D = block.D[0 : mLen+1]
+	block.A = block.A[0 : aLen+len(t.Entries)]
+	block.V = block.V[0 : aLen+len(t.Entries)]
+	block.B = block.B[0 : mLen*2+2]
+	block.M[mLen] = int64(t.Moment)
+	block.D[mLen] = int32(t.Date)
 	i := 0
 	for a, v := range t.Entries {
-		db.a[aLen+i] = uint32(a)
-		db.v[aLen+i] = v
+		block.A[aLen+i] = int32(a)
+		block.V[aLen+i] = v
 		i++
 	}
-	db.b[mLen*2] = uint16(aLen)
-	db.b[mLen*2+1] = uint16(aLen + len(t.Entries))
+	block.B[mLen*2] = int16(aLen)
+	block.B[mLen*2+1] = int16(aLen + len(t.Entries))
 }
 
 func startDate(d []DateRange, elem Date) Date {

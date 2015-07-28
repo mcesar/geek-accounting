@@ -55,7 +55,7 @@ func (SpaceTester) TestSlice(t *testing.T, b SpaceBuilder) {
 		b.NewSpace(Array{{{0, 0}}, {{2, -2}}}.Transposed()),
 	}
 	for i := range spaces {
-		spaces[i] = spaces[i].Slice(arguments[i].a, arguments[i].d, arguments[i].m)
+		spaces[i], _ = spaces[i].Slice(arguments[i].a, arguments[i].d, arguments[i].m)
 	}
 	assertSpaces(t, spaces, cases)
 }
@@ -75,7 +75,7 @@ func (SpaceTester) TestProjection(t *testing.T, b SpaceBuilder) {
 		b.NewSpace(Array{{{3, -3}}, {{0, 0}}}.Transposed()),
 	}
 	for i := range spaces {
-		spaces[i] = spaces[i].Projection(arguments[i].a, arguments[i].d, arguments[i].m)
+		spaces[i], _ = spaces[i].Projection(arguments[i].a, arguments[i].d, arguments[i].m)
 	}
 	assertSpaces(t, spaces, cases)
 }
@@ -83,7 +83,8 @@ func (SpaceTester) TestProjection(t *testing.T, b SpaceBuilder) {
 func assertSpaceTransactions(t *testing.T, spaces []Space, cases [][]Transaction) {
 	for i, s := range spaces {
 		j := 0
-		for tx := range s.Transactions() {
+		c, _ := s.Transactions()
+		for tx := range c {
 			if !reflect.DeepEqual(*tx, cases[i][j]) {
 				t.Errorf("%v != %v", *tx, cases[i][j])
 			}
@@ -105,8 +106,8 @@ func assertSpaces(t *testing.T, spaces []Space, cases []Space) {
 			t.Errorf("Case %v is nil", i)
 			continue
 		}
-		c1 := s.Transactions()
-		c2 := cases[i].Transactions()
+		c1, _ := s.Transactions()
+		c2, _ := cases[i].Transactions()
 		for {
 			tx1, ok1 := <-c1
 			tx2, ok2 := <-c2
