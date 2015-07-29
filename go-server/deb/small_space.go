@@ -9,19 +9,39 @@ import (
 type smallSpace struct {
 	arr                      Array
 	dateOffset, momentOffset int
+	metadata                 [][][]byte
 }
 
-func NewSmallSpace(arr Array) Space {
-	return NewSmallSpaceWithOffset(arr, 0, 0)
+// NewSmallSpace creates a Space based on the given array and metadata.
+// Metadata is a []byte and is indexed by date and moment,
+// therefore the type [][][]byte.
+func NewSmallSpace(arr Array, metadata [][][]byte) Space {
+	return NewSmallSpaceWithOffset(arr, 0, 0, metadata)
 }
 
-func NewSmallSpaceWithOffset(arr Array, dateOffset, momentOffset int) Space {
-	return &smallSpace{arr.Copy(), dateOffset, momentOffset}
+// NewSmallSpaceWithOffset creates a Space based on the given array, offsets and metadata.
+// Metadata is a []byte and is indexed by date and moment,
+// therefore the type [][][]byte.
+func NewSmallSpaceWithOffset(arr Array, dateOffset, momentOffset int, metadata [][][]byte) Space {
+	return &smallSpace{arr.Copy(), dateOffset, momentOffset, metadata}
 }
 
 func (ss *smallSpace) Append(s Space) error {
 	if other_ss, ok := s.(*smallSpace); ok {
 		ss.arr.Append(&other_ss.arr, other_ss.dateOffset, other_ss.momentOffset)
+		if other_ss.metadata != nil {
+			x, y, z = ss.arr.Dimensions()
+			if ss.metadata == nil {
+				ss.metadata = make([][][]byte, y)
+				for i := 0; i < y; i++ {
+					ss.metadata[y] = make([][]byte, x)
+				}
+			}
+			//TODO
+			for i := 0; i < len(ss.arr); i++ {
+
+			}
+		}
 		return nil
 	} else {
 		// Computes the array size
@@ -62,12 +82,13 @@ func (ss *smallSpace) Append(s Space) error {
 			}
 		}
 		ss.arr.Append(&other_arr, int(minDate), int(minMoment))
+		//TODO: append metadata
 		return <-errc
 	}
 }
 
 func (ss *smallSpace) Slice(a []Account, d []DateRange, m []MomentRange) (Space, error) {
-	result := smallSpace{ss.arr.Copy(), ss.dateOffset, ss.momentOffset}
+	result := smallSpace{ss.arr.Copy(), ss.dateOffset, ss.momentOffset, ss.metadata}
 	x, y, z := ss.arr.Dimensions()
 	for i := 0; i < x; i++ {
 		for j := 0; j < y; j++ {
@@ -75,6 +96,9 @@ func (ss *smallSpace) Slice(a []Account, d []DateRange, m []MomentRange) (Space,
 				if !containsDate(d, Date(j+1+ss.dateOffset)) ||
 					!containsMoment(m, Moment(k+1+ss.momentOffset)) {
 					result.arr[i][j][k] = 0
+					if ss.metadata != nil {
+						ss.metadata[j][k] = nil
+					}
 				}
 			}
 		}
@@ -92,6 +116,9 @@ func (ss *smallSpace) Slice(a []Account, d []DateRange, m []MomentRange) (Space,
 				for i := 0; i < x; i++ {
 					result.arr[i][j][k] = 0
 				}
+				if ss.metadata != nil {
+					ss.metadata[j][k] = nil
+				}
 			}
 		}
 	}
@@ -99,7 +126,7 @@ func (ss *smallSpace) Slice(a []Account, d []DateRange, m []MomentRange) (Space,
 }
 
 func (ss *smallSpace) Projection(a []Account, d []DateRange, m []MomentRange) (Space, error) {
-	result := smallSpace{ss.arr.Copy(), ss.dateOffset, ss.momentOffset}
+	result := smallSpace{ss.arr.Copy(), ss.dateOffset, ss.momentOffset, nil}
 	x, y, z := ss.arr.Dimensions()
 	for i := 0; i < x; i++ {
 		for _, each_dr := range d {
@@ -151,8 +178,12 @@ func (ss *smallSpace) Transactions() (chan *Transaction, chan error) {
 		x, y, z := ss.arr.Dimensions()
 		for k := 0; k < z; k++ {
 			for j := 0; j < y; j++ {
+				var metadata []byte
+				if ss.metadata != nil {
+					metadata = ss.metadata[j][k]
+				}
 				t := Transaction{Moment(k + 1 + ss.momentOffset),
-					Date(j + 1 + ss.dateOffset), make(Entries)}
+					Date(j + 1 + ss.dateOffset), make(Entries), metadata}
 				for i := 0; i < x; i++ {
 					if ss.arr[i][j][k] != 0 {
 						t.Entries[Account(i+1)] = ss.arr[i][j][k]

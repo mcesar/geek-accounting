@@ -119,7 +119,7 @@ func (ls *largeSpace) String() string {
 }
 
 func (block *dataBlock) newTransaction(i int) *Transaction {
-	t := Transaction{Moment(block.M[i]), Date(block.D[i]), make(Entries)}
+	t := Transaction{Moment(block.M[i]), Date(block.D[i]), make(Entries), nil}
 	for j := block.B[i*2]; j < block.B[i*2+1]; j++ {
 		t.Entries[Account(block.A[j])] = block.V[j]
 	}

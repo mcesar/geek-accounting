@@ -36,7 +36,7 @@ func (LargeSpaceBuilder) NewSpaceWithOffset(arr Array, do, mo int) Space {
 		}
 	}()
 	ls := NewLargeSpace(10*1024, in, out, errc)
-	ls.Append(NewSmallSpaceWithOffset(arr, do, mo))
+	ls.Append(NewSmallSpaceWithOffset(arr, do, mo, nil))
 	return ls
 }
 

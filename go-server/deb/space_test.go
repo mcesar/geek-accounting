@@ -18,8 +18,8 @@ func (SpaceTester) TestTransactions(t *testing.T, b SpaceBuilder) {
 		b.NewSpaceWithOffset(Array{{{1, -1}}}.Transposed(), 1, 2),
 	}
 	cases := [][]Transaction{
-		{Transaction{Moment(1), Date(1), Entries{Account(1): 1, Account(2): -1}}},
-		{Transaction{Moment(3), Date(2), Entries{Account(1): 1, Account(2): -1}}},
+		{Transaction{Moment(1), Date(1), Entries{Account(1): 1, Account(2): -1}, nil}},
+		{Transaction{Moment(3), Date(2), Entries{Account(1): 1, Account(2): -1}, nil}},
 	}
 	assertSpaceTransactions(t, spaces, cases)
 }

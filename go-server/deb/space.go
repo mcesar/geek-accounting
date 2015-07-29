@@ -8,9 +8,10 @@ type MomentRange struct{ Start, End Moment }
 type Entries map[Account]int64
 
 type Transaction struct {
-	Moment  Moment
-	Date    Date
-	Entries Entries
+	Moment   Moment
+	Date     Date
+	Entries  Entries
+	Metadata []byte
 }
 
 type Space interface {

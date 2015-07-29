@@ -5,11 +5,11 @@ import "testing"
 type SmallSpaceBuilder int
 
 func (SmallSpaceBuilder) NewSpace(arr Array) Space {
-	return NewSmallSpace(arr)
+	return NewSmallSpace(arr, nil)
 }
 
 func (SmallSpaceBuilder) NewSpaceWithOffset(arr Array, do, mo int) Space {
-	return NewSmallSpaceWithOffset(arr, do, mo)
+	return NewSmallSpaceWithOffset(arr, do, mo, nil)
 }
 
 func TestSmallSpaceTransactions(t *testing.T) {
