@@ -18,7 +18,7 @@ type dataBlock struct {
 	B   []int16
 }
 
-func NewLargeSpace(blockSize uint, in func() chan *dataBlock, out chan *dataBlock,
+func newLargeSpace(blockSize uint, in func() chan *dataBlock, out chan *dataBlock,
 	errc chan error) *largeSpace {
 	return &largeSpace{blockSize: blockSize, in: in, out: out, errc: errc}
 }

@@ -57,6 +57,6 @@ func NewDatastoreSpace(ctx appengine.Context, key *datastore.Key) (Space, error)
 			errc <- err
 		}
 	}()
-	ds = NewLargeSpace(1014*1024, in, out, errc)
+	ds = newLargeSpace(1014*1024, in, out, errc)
 	return ds, nil
 }
