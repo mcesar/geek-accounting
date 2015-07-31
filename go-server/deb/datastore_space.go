@@ -4,18 +4,28 @@ package deb
 
 import (
 	"fmt"
+	"time"
 
 	"appengine"
 	"appengine/datastore"
 )
 
-type datastoreSpace struct{}
+type datastoreSpace struct{ AsOf time.Time }
+
+type blockWrapper struct {
+	Block dataBlock
+	AsOf  time.Time
+}
+
+type keyWrapper struct {
+	key  *datastore.Key
+	asOf time.Time
+}
 
 func NewDatastoreSpace(ctx appengine.Context, key *datastore.Key) (Space, error) {
 	if ctx == nil {
-		fmt.Errorf("ctx is nil")
+		return nil, fmt.Errorf("ctx is nil")
 	}
-	var ds *largeSpace
 	if key == nil {
 		key = datastore.NewIncompleteKey(ctx, "space", nil)
 		var err error
@@ -23,6 +33,7 @@ func NewDatastoreSpace(ctx appengine.Context, key *datastore.Key) (Space, error)
 			return nil, err
 		}
 	}
+	var ls *largeSpace
 	errc := make(chan error, 1)
 	in := func() chan *dataBlock {
 		c := make(chan *dataBlock)
@@ -33,8 +44,9 @@ func NewDatastoreSpace(ctx appengine.Context, key *datastore.Key) (Space, error)
 			q := datastore.NewQuery("data_block").Ancestor(key)
 			t := q.Run(ctx)
 			for {
-				var b = ds.newDataBlock()
-				b.key, err = t.Next(b)
+				bw := blockWrapper{*ls.newDataBlock(), time.Now()}
+				var k *datastore.Key
+				k, err = t.Next(&bw)
 				if err == datastore.Done {
 					err = nil
 					break
@@ -42,7 +54,8 @@ func NewDatastoreSpace(ctx appengine.Context, key *datastore.Key) (Space, error)
 				if err != nil {
 					break
 				}
-				c <- b
+				bw.Block.key = keyWrapper{k, bw.AsOf}
+				c <- &bw.Block
 			}
 		}()
 		return c
@@ -50,13 +63,26 @@ func NewDatastoreSpace(ctx appengine.Context, key *datastore.Key) (Space, error)
 	out := make(chan *dataBlock)
 	go func() {
 		for block := range out {
-			if block.key == nil {
-				block.key = datastore.NewIncompleteKey(ctx, "data_block", key)
+			bw := blockWrapper{*block, time.Now()}
+			if block.key == nil || block.key.(keyWrapper).key == nil {
+				block.key = keyWrapper{datastore.NewIncompleteKey(ctx, "data_block", key),
+					time.Now()}
+			} else {
+				var bw2 blockWrapper
+				err := datastore.Get(ctx, block.key.(keyWrapper).key, &bw2)
+				if err != nil {
+					errc <- err
+					continue
+				}
+				if bw2.AsOf != block.key.(keyWrapper).asOf {
+					errc <- fmt.Errorf("Concurrent modification")
+					continue
+				}
 			}
-			_, err := datastore.Put(ctx, block.key.(*datastore.Key), block)
+			_, err := datastore.Put(ctx, block.key.(keyWrapper).key, &bw)
 			errc <- err
 		}
 	}()
-	ds = newLargeSpace(1014*1024, in, out, errc)
-	return ds, nil
+	ls = newLargeSpace(1014*1024, in, out, errc)
+	return ls, nil
 }
