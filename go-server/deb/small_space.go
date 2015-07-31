@@ -27,20 +27,38 @@ func NewSmallSpaceWithOffset(arr Array, dateOffset, momentOffset int, metadata [
 }
 
 func (ss *smallSpace) Append(s Space) error {
-	if other_ss, ok := s.(*smallSpace); ok {
-		ss.arr.Append(&other_ss.arr, other_ss.dateOffset, other_ss.momentOffset)
-		if other_ss.metadata != nil {
-			x, y, z = ss.arr.Dimensions()
-			if ss.metadata == nil {
-				ss.metadata = make([][][]byte, y)
-				for i := 0; i < y; i++ {
-					ss.metadata[y] = make([][]byte, x)
+	var (
+		y, z int
+		md   [][][]byte
+	)
+	_, y0, z0 := ss.arr.Dimensions()
+	makeMd := func() {
+		_, y, z = ss.arr.Dimensions()
+		md = make([][][]byte, y)
+		for i := 0; i < y; i++ {
+			md[i] = make([][]byte, z)
+			for j := 0; j < z; j++ {
+				if ss.metadata != nil && i < y0 && j < z0 {
+					md[i][j] = ss.metadata[i][j]
 				}
 			}
-			//TODO
-			for i := 0; i < len(ss.arr); i++ {
-
+		}
+	}
+	if other_ss, ok := s.(*smallSpace); ok {
+		do := other_ss.dateOffset - ss.dateOffset
+		mo := other_ss.momentOffset - ss.momentOffset
+		ss.arr.Append(&other_ss.arr, do, mo)
+		if ss.metadata != nil || other_ss.metadata != nil {
+			makeMd()
+			for i := 0; i < y; i++ {
+				for j := 0; j < z; j++ {
+					if other_ss.metadata != nil && j >= z0 {
+						md[i][j] =
+							other_ss.metadata[i-other_ss.dateOffset][j-other_ss.momentOffset]
+					}
+				}
 			}
+			ss.metadata = md
 		}
 		return nil
 	} else {
@@ -48,6 +66,7 @@ func (ss *smallSpace) Append(s Space) error {
 		var minDate, minMoment, maxAccount, maxDate, maxMoment uint64
 		minDate, minMoment = math.MaxUint64, math.MaxUint64
 		c, errc := s.Transactions()
+		hasMetadata := false
 		for t := range c {
 			if t.Date < Date(minDate) {
 				minDate = uint64(t.Date)
@@ -66,6 +85,9 @@ func (ss *smallSpace) Append(s Space) error {
 			if t.Moment > Moment(maxMoment) {
 				maxMoment = uint64(t.Moment)
 			}
+			if t.Metadata != nil {
+				hasMetadata = true
+			}
 		}
 		if err := <-errc; err != nil {
 			return err
@@ -75,14 +97,24 @@ func (ss *smallSpace) Append(s Space) error {
 		}
 		// Builds the array
 		other_arr := NewArray(int(maxAccount), int(maxDate-minDate), int(maxMoment-minMoment))
+		if ss.metadata != nil || hasMetadata {
+			makeMd()
+		}
 		c, errc = s.Transactions()
 		for t := range c {
 			for a, v := range t.Entries {
 				other_arr[a-1][t.Date-1][t.Moment-1] = v
 			}
+			if hasMetadata {
+				d := int(t.Date) - int(minDate) - ss.dateOffset
+				m := int(t.Moment) - int(minMoment) - ss.momentOffset
+				md[d][m] = t.Metadata
+			}
 		}
 		ss.arr.Append(&other_arr, int(minDate), int(minMoment))
-		//TODO: append metadata
+		if ss.metadata != nil || hasMetadata {
+			ss.metadata = md
+		}
 		return <-errc
 	}
 }
@@ -176,8 +208,8 @@ func (ss *smallSpace) Transactions() (chan *Transaction, chan error) {
 			return
 		}
 		x, y, z := ss.arr.Dimensions()
-		for k := 0; k < z; k++ {
-			for j := 0; j < y; j++ {
+		for j := 0; j < y; j++ {
+			for k := 0; k < z; k++ {
 				var metadata []byte
 				if ss.metadata != nil {
 					metadata = ss.metadata[j][k]

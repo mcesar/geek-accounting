@@ -11,11 +11,13 @@ type largeSpace struct {
 
 type dataBlock struct {
 	key interface{}
-	M   []int64
-	D   []int32
-	A   []int32
-	V   []int64
-	B   []int16
+	M   []int64 // Moments
+	D   []int32 // Dates
+	A   []int32 // Accounts
+	V   []int64 // Values
+	B   []int16 // Accounts bound
+	MD  []byte  // Metadata
+	BMD []int16 // Metadata bounds
 }
 
 func newLargeSpace(blockSize uint, in func() chan *dataBlock, out chan *dataBlock,
@@ -68,6 +70,7 @@ func (ls *largeSpace) Projection(a []Account, d []DateRange, m []MomentRange) (S
 		nt := block.newTransaction(i)
 		if t, ok := transactions[k]; !ok {
 			transactions[k] = nt
+			transactions[k].Metadata = []byte{}
 		} else {
 			for ek, ev := range nt.Entries {
 				if ov, ok := t.Entries[ek]; ok {
@@ -120,6 +123,7 @@ func (ls *largeSpace) String() string {
 
 func (block *dataBlock) newTransaction(i int) *Transaction {
 	t := Transaction{Moment(block.M[i]), Date(block.D[i]), make(Entries), nil}
+	t.Metadata = block.MD[block.BMD[i*2]:block.BMD[i*2+1]]
 	for j := block.B[i*2]; j < block.B[i*2+1]; j++ {
 		t.Entries[Account(block.A[j])] = block.V[j]
 	}
@@ -127,13 +131,14 @@ func (block *dataBlock) newTransaction(i int) *Transaction {
 }
 
 func (ls *largeSpace) capacity() uint {
-	return ls.blockSize / (64 + 32 + 32*2 + 64*2 + 16*2)
+	return (ls.blockSize / 2) / (64 + 32 + 32*2 + 64*2 + 16*2 + 16*2)
 }
 
 func (ls *largeSpace) freeBlock(t *Transaction) (*dataBlock, error) {
 	var result *dataBlock
 	for block := range ls.in() {
-		if uint(len(block.A)+len(t.Entries)) <= ls.capacity()*2 {
+		if uint(len(block.A)+len(t.Entries)) <= ls.capacity()*2 &&
+			(t.Metadata == nil || uint(len(block.MD)+len(t.Metadata)) <= ls.blockSize/2) {
 			result = block
 		}
 	}
@@ -147,6 +152,8 @@ func (ls *largeSpace) newDataBlock() *dataBlock {
 	block.A = make([]int32, 0, ls.capacity()*2)
 	block.V = make([]int64, 0, ls.capacity()*2)
 	block.B = make([]int16, 0, ls.capacity()*2)
+	block.MD = make([]byte, 0, ls.blockSize/2)
+	block.BMD = make([]int16, 0, ls.capacity()*2)
 	return block
 }
 
@@ -170,11 +177,13 @@ func (ls *largeSpace) iterateWithFilter(a []Account, d []DateRange, m []MomentRa
 func (block *dataBlock) append(t *Transaction) {
 	mLen := len(block.M)
 	aLen := len(block.A)
+	mdLen := len(block.MD)
 	block.M = block.M[0 : mLen+1]
 	block.D = block.D[0 : mLen+1]
 	block.A = block.A[0 : aLen+len(t.Entries)]
 	block.V = block.V[0 : aLen+len(t.Entries)]
 	block.B = block.B[0 : mLen*2+2]
+	block.BMD = block.BMD[0 : mLen*2+2]
 	block.M[mLen] = int64(t.Moment)
 	block.D[mLen] = int32(t.Date)
 	i := 0
@@ -185,6 +194,15 @@ func (block *dataBlock) append(t *Transaction) {
 	}
 	block.B[mLen*2] = int16(aLen)
 	block.B[mLen*2+1] = int16(aLen + len(t.Entries))
+	if t.Metadata != nil {
+		block.BMD[mLen*2] = int16(mdLen)
+		block.BMD[mLen*2+1] = int16(mdLen + len(t.Metadata))
+		block.MD = block.MD[0 : mdLen+len(t.Metadata)]
+		copy(block.MD[mdLen:mdLen+len(t.Metadata)], t.Metadata)
+	} else {
+		block.BMD[mLen*2] = 0
+		block.BMD[mLen*2+1] = 0
+	}
 }
 
 func startDate(d []DateRange, elem Date) Date {

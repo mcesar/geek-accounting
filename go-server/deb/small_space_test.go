@@ -4,12 +4,12 @@ import "testing"
 
 type SmallSpaceBuilder int
 
-func (SmallSpaceBuilder) NewSpace(arr Array) Space {
-	return NewSmallSpace(arr, nil)
+func (SmallSpaceBuilder) NewSpace(arr Array, metadata [][][]byte) Space {
+	return NewSmallSpace(arr, metadata)
 }
 
-func (SmallSpaceBuilder) NewSpaceWithOffset(arr Array, do, mo int) Space {
-	return NewSmallSpaceWithOffset(arr, do, mo, nil)
+func (SmallSpaceBuilder) NewSpaceWithOffset(arr Array, do, mo int, metadata [][][]byte) Space {
+	return NewSmallSpaceWithOffset(arr, do, mo, metadata)
 }
 
 func TestSmallSpaceTransactions(t *testing.T) {

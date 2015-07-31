@@ -24,16 +24,16 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-func (dsb DatastoreSpaceBuilder) NewSpace(arr Array) Space {
-	return dsb.NewSpaceWithOffset(arr, 0, 0)
+func (dsb DatastoreSpaceBuilder) NewSpace(arr Array, metadata [][][]byte) Space {
+	return dsb.NewSpaceWithOffset(arr, 0, 0, metadata)
 }
 
-func (DatastoreSpaceBuilder) NewSpaceWithOffset(arr Array, do, mo int) Space {
+func (DatastoreSpaceBuilder) NewSpaceWithOffset(arr Array, do, mo int, metadata [][][]byte) Space {
 	ds, err := NewDatastoreSpace(ctx, nil)
 	if err != nil {
 		panic(err)
 	}
-	if err := ds.Append(NewSmallSpaceWithOffset(arr, do, mo, nil)); err != nil {
+	if err := ds.Append(NewSmallSpaceWithOffset(arr, do, mo, metadata)); err != nil {
 		panic(err)
 	}
 	return ds

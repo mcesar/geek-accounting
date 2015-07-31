@@ -4,11 +4,11 @@ import "testing"
 
 type LargeSpaceBuilder int
 
-func (lsb LargeSpaceBuilder) NewSpace(arr Array) Space {
-	return lsb.NewSpaceWithOffset(arr, 0, 0)
+func (lsb LargeSpaceBuilder) NewSpace(arr Array, metadata [][][]byte) Space {
+	return lsb.NewSpaceWithOffset(arr, 0, 0, metadata)
 }
 
-func (LargeSpaceBuilder) NewSpaceWithOffset(arr Array, do, mo int) Space {
+func (LargeSpaceBuilder) NewSpaceWithOffset(arr Array, do, mo int, metadata [][][]byte) Space {
 	blocks := []*dataBlock{}
 	errc := make(chan error, 1)
 	in := func() chan *dataBlock {
@@ -35,8 +35,8 @@ func (LargeSpaceBuilder) NewSpaceWithOffset(arr Array, do, mo int) Space {
 			errc <- nil
 		}
 	}()
-	ls := NewLargeSpace(10*1024, in, out, errc)
-	ls.Append(NewSmallSpaceWithOffset(arr, do, mo, nil))
+	ls := newLargeSpace(10*1024, in, out, errc)
+	ls.Append(NewSmallSpaceWithOffset(arr, do, mo, metadata))
 	return ls
 }
 
