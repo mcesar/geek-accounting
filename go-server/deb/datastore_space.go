@@ -10,7 +10,7 @@ import (
 	"appengine/datastore"
 )
 
-type datastoreSpace struct{ AsOf time.Time }
+type datastoreSpace struct{}
 
 type blockWrapper struct {
 	Block dataBlock
@@ -69,8 +69,7 @@ func NewDatastoreSpace(ctx appengine.Context, key *datastore.Key) (Space, error)
 					time.Now()}
 			} else {
 				var bw2 blockWrapper
-				err := datastore.Get(ctx, block.key.(keyWrapper).key, &bw2)
-				if err != nil {
+				if err := datastore.Get(ctx, block.key.(keyWrapper).key, &bw2); err != nil {
 					errc <- err
 					continue
 				}
