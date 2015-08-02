@@ -176,7 +176,7 @@ func postHandler2(f writeHandlerFunc, includeContextInMap bool) http.HandlerFunc
 
 func deleteHandler(f writeHandlerFunc) http.HandlerFunc {
 	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error {
-		var m map[string]interface{}
+		m := map[string]interface{}{}
 		params := mux.Vars(r)
 		ctx := appengine.NewContext(r)
 		c := newContext(ctx)

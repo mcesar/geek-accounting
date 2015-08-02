@@ -8,7 +8,7 @@ import (
 	"github.com/mcesarhm/geek-accounting/go-server/extensions/collections"
 	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
 	//"log"
-	//"mcesar.io/deb"
+	"mcesar.io/deb"
 	"sort"
 	"strings"
 	"time"
@@ -32,12 +32,13 @@ func (coa *ChartOfAccounts) ValidationMessage(_ db.Db, _ map[string]string) stri
 
 type Account struct {
 	db.Identifiable
-	Number string       `json:"number"`
-	Name   string       `json:"name"`
-	Tags   []string     `json:"tags"`
-	Parent db.CKey      `json:"parent"`
-	User   core.UserKey `json:"user"`
-	AsOf   time.Time    `json:"timestamp"`
+	Number  string       `json:"number"`
+	Name    string       `json:"name"`
+	Tags    []string     `json:"tags"`
+	Parent  db.CKey      `json:"parent"`
+	User    core.UserKey `json:"user"`
+	AsOf    time.Time    `json:"timestamp"`
+	Removed bool         `json:"-"`
 }
 
 var inheritedProperties = map[string]string{
@@ -155,6 +156,13 @@ type Entry struct {
 	Value   float64 `json:"value"`
 }
 
+type transactionMetadata struct {
+	memo    string
+	tags    []string
+	user    core.UserKey
+	removes uint64
+}
+
 func (transaction *Transaction) ValidationMessage(db db.Db, param map[string]string) string {
 	if len(transaction.Debits) == 0 {
 		return "At least one debit must be informed"
@@ -209,7 +217,8 @@ func (transaction *Transaction) updateAccountsKeysAsString() {
 	transaction.AccountsKeysAsString = accountsKeysAsString
 }
 
-func (transaction *Transaction) incrementValue(lookupAccount func(db.Key) *Account, addValue func(db.Key, float64)) {
+func (transaction *Transaction) incrementValue(lookupAccount func(db.Key) *Account,
+	addValue func(db.Key, float64)) {
 	f := func(entries []Entry, f func(*Account, float64) float64) {
 		for _, e := range entries {
 			var accountKey db.Key
@@ -296,22 +305,40 @@ func SaveChartOfAccounts(c context.Context, m map[string]interface{}, param map[
 func AllAccounts(c context.Context, m map[string]interface{}, param map[string]string,
 	_ core.UserKey) (interface{}, error) {
 	_, accounts, err := c.Db.GetAll("Account", param["coa"], &[]Account{}, nil, []string{"Number"})
-	return accounts, err
+	aa := accounts.(*[]Account)
+	result := make([]Account, 0, len(*aa))
+	for _, a := range *aa {
+		if !a.Removed {
+			result = result[0 : len(result)+1]
+			result[len(result)-1] = a
+		}
+	}
+	return result, err
 }
 
 func GetAccount(c context.Context, m map[string]interface{}, param map[string]string,
 	_ core.UserKey) (result interface{}, err error) {
-	return c.Db.Get(&Account{}, param["account"])
+	if a, err := c.Db.Get(&Account{}, param["account"]); err != nil {
+		return nil, err
+	} else {
+		if a.(*Account).Removed {
+			return nil, fmt.Errorf("Account not found")
+		}
+		return a, nil
+	}
+
 }
 
-func SaveAccount(c context.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (item interface{}, err error) {
+func SaveAccount(c context.Context, m map[string]interface{}, param map[string]string,
+	userKey core.UserKey) (item interface{}, err error) {
 
 	account := &Account{
-		Number: m["number"].(string),
-		Name:   m["name"].(string),
-		Tags:   []string{},
-		User:   userKey,
-		AsOf:   time.Now()}
+		Number:  m["number"].(string),
+		Name:    m["name"].(string),
+		Tags:    []string{},
+		User:    userKey,
+		AsOf:    time.Now(),
+		Removed: false}
 
 	isUpdate := false
 
@@ -340,7 +367,8 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 	}
 	if parentNumber, ok := m["parent"]; ok {
 		var accounts []Account
-		keys, _, err := c.Db.GetAll("Account", param["coa"], &accounts, db.M{"Number = ": parentNumber}, nil)
+		keys, _, err := c.Db.GetAll("Account", param["coa"], &accounts,
+			db.M{"Number = ": parentNumber}, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -426,7 +454,8 @@ func DeleteAccount(c context.Context, m map[string]interface{}, param map[string
 	}
 
 	checkReferences := func(kind, property, errorMessage string) error {
-		if keys, _, err := c.Db.GetAll(kind, param["coa"], nil, db.M{property: key}, nil); err != nil {
+		if keys, _, err := c.Db.GetAllWithLimit(kind, param["coa"], nil,
+			db.M{property: key}, nil, 1); err != nil {
 			return err
 		} else {
 			if keys.Len() > 0 {
@@ -450,8 +479,23 @@ func DeleteAccount(c context.Context, m map[string]interface{}, param map[string
 	if err != nil {
 		return
 	}
-
-	if err = c.Db.Delete(key); err != nil {
+	/*
+		if err = c.Db.Delete(key); err != nil {
+			return
+		}
+	*/
+	err = c.Db.Execute(func() error {
+		var a Account
+		if _, err := c.Db.Get(&a, key.Encode()); err != nil {
+			return err
+		}
+		a.Removed = true
+		if _, err := c.Db.Save(&a, "Account", coaKey.Encode(), param); err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
 		return
 	}
 
@@ -475,10 +519,6 @@ func GetTransaction(c context.Context, m map[string]interface{}, param map[strin
 
 func SaveTransaction(c context.Context, m map[string]interface{}, param map[string]string,
 	userKey core.UserKey) (item interface{}, err error) {
-
-	//space := m["space"].(deb.Space)
-
-	//space.Append(deb.NewSmallSpace(deb.Array({{{}}}), metadata))
 
 	asOf := time.Now()
 
@@ -558,10 +598,18 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 	transaction.SetKey(transactionKey)
 	item = transaction
 
+	appendTransactionOnSpace(m["space"].(deb.Space), transaction)
+
 	return
 }
 
-func DeleteTransaction(c context.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (_ interface{}, err error) {
+func appendTransactionOnSpace(space deb.Space, transaction *Transaction) error {
+	//space.Append(deb.NewSmallSpace(deb.Array({{{}}}), metadata))
+	return nil
+}
+
+func DeleteTransaction(c context.Context, m map[string]interface{}, param map[string]string,
+	userKey core.UserKey) (_ interface{}, err error) {
 
 	key, err := c.Db.DecodeKey(param["transaction"])
 	if err != nil {
@@ -588,16 +636,21 @@ func DeleteTransaction(c context.Context, m map[string]interface{}, param map[st
 
 }
 
-func Accounts(c context.Context, coaKey string, filters map[string]interface{}) (keys db.Keys, accounts []*Account, err error) {
-	keys, _, err = c.Db.GetAllFromCache("Account", coaKey, &accounts, filters, []string{"Number"}, c.Cache, "accounts_"+coaKey)
+func Accounts(c context.Context, coaKey string, filters map[string]interface{}) (keys db.Keys,
+	accounts []*Account, err error) {
+	filters["Removed ="] = false
+	keys, _, err = c.Db.GetAllFromCache("Account", coaKey, &accounts, filters, []string{"Number"},
+		c.Cache, "accounts_"+coaKey)
 	if err != nil {
 		return
 	}
 	return
 }
 
-func Transactions(c context.Context, coaKey string, filters map[string]interface{}) (keys db.Keys, transactions []*Transaction, err error) {
-	keys, _, err = c.Db.GetAll("Transaction", coaKey, &transactions, filters, []string{"Date", "AsOf"})
+func Transactions(c context.Context, coaKey string, filters map[string]interface{}) (keys db.Keys,
+	transactions []*Transaction, err error) {
+	keys, _, err = c.Db.GetAll("Transaction", coaKey, &transactions, filters,
+		[]string{"Date", "AsOf"})
 	if err != nil {
 		return
 	}
@@ -609,15 +662,19 @@ type TransactionWithValue struct {
 	Value float64
 }
 
-func TransactionsWithValue(c context.Context, coaKey string, account *Account, from, to time.Time) (transactionsWithValue []*TransactionWithValue, balance float64, err error) {
+func TransactionsWithValue(c context.Context, coaKey string, account *Account, from,
+	to time.Time) (transactionsWithValue []*TransactionWithValue, balance float64, err error) {
 
 	var keys db.Keys
 	var transactions []*Transaction
-	if keys, _, err = c.Db.GetAll("Transaction", coaKey, &transactions, db.M{"AccountsKeysAsString =": account.Key.Encode(), "Date >=": from, "Date <=": to}, []string{"Date", "AsOf"}); err != nil {
+	if keys, _, err = c.Db.GetAll("Transaction", coaKey, &transactions,
+		db.M{"AccountsKeysAsString =": account.Key.Encode(), "Date >=": from, "Date <=": to},
+		[]string{"Date", "AsOf"}); err != nil {
 		return
 	}
 
-	b, err := Balances(c, coaKey, time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC), from.AddDate(0, 0, -1), map[string]interface{}{"Number =": account.Number})
+	b, err := Balances(c, coaKey, time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC),
+		from.AddDate(0, 0, -1), map[string]interface{}{"Number =": account.Number})
 	if err != nil {
 		return
 	}
@@ -779,7 +836,8 @@ func Balances(c context.Context, coaKey string, from, to time.Time, accountFilte
 }
 
 func accountKeyWithNumber(d db.Db, number, coa string) (db.Key, error) {
-	if keys, _, err := d.GetAll("Account", coa, nil, db.M{"Number = ": number}, nil); err != nil {
+	if keys, _, err := d.GetAll("Account", coa, nil, db.M{"Number = ": number, "Removed = ": false},
+		nil); err != nil {
 		return d.NewKey(), err
 	} else if keys.Len() == 0 {
 		return d.NewKey(), nil

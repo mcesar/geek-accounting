@@ -94,6 +94,9 @@ func (db appengineDb) GetAllWithLimit(kind string, ancestor string, items interf
 	}
 	if filters != nil {
 		for k, v := range filters {
+			if _, ok := v.(CKey); ok {
+				v = v.(CKey).DsKey
+			}
 			q = q.Filter(k, v)
 		}
 	}
