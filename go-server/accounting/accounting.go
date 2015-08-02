@@ -8,6 +8,7 @@ import (
 	"github.com/mcesarhm/geek-accounting/go-server/extensions/collections"
 	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
 	_ "log"
+	//"mcesar.io/deb"
 	"sort"
 	"strings"
 	"time"
@@ -17,6 +18,7 @@ type ChartOfAccounts struct {
 	db.Identifiable
 	Name                    string       `json:"name"`
 	RetainedEarningsAccount db.CKey      `json:"retainedEarningsAccount"`
+	Space                   db.CKey      `json:"space"`
 	User                    core.UserKey `json:"user"`
 	AsOf                    time.Time    `json:"timestamp"`
 }
@@ -262,6 +264,24 @@ func SaveChartOfAccounts(c context.Context, m map[string]interface{}, param map[
 		Name: m["name"].(string),
 		User: userKey,
 		AsOf: time.Now()}
+	if coaKeyAsString, ok := param["coa"]; ok {
+		if k, err := c.Db.DecodeKey(coaKeyAsString); err != nil {
+			return nil, err
+		} else {
+			coa.SetKey(k)
+		}
+		var coa2 ChartOfAccounts
+		if _, err := c.Db.Get(&coa2, param["coa"]); err != nil {
+			return nil, err
+		}
+		coa.Space = coa2.Space
+	} else {
+		if k, err := c.Db.DecodeKey(param["space"]); err != nil {
+			return nil, err
+		} else {
+			coa.Space = k.(db.CKey)
+		}
+	}
 	_, err := c.Db.Save(coa, "ChartOfAccounts", "", param)
 	return coa, err
 }

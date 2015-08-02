@@ -51,7 +51,8 @@ func InitUserManagement(c context.Context) (err error) {
 		return
 	}
 	if user == nil {
-		_, err = c.Db.Save(&User{User: "admin", Password: hash("admin")}, "User", realm(c.Db), nil)
+		_, err = c.Db.Save(&User{User: "admin", Password: hash("admin"), Name: "admin"},
+			"User", realm(c.Db), nil)
 		if err != nil {
 			return
 		}

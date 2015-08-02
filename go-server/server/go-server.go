@@ -17,6 +17,7 @@ import (
 	"github.com/mcesarhm/geek-accounting/go-server/context"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
+	"mcesar.io/deb"
 	"strings"
 
 	"appengine"
@@ -25,27 +26,42 @@ import (
 
 const PathPrefix = "/charts-of-accounts"
 
+type readHandlerFunc func(context.Context, map[string]string, core.UserKey) (interface{}, error)
+
+type writeHandlerFunc func(context.Context, map[string]interface{}, map[string]string, core.UserKey) (interface{}, error)
+
 func init() {
 	gob.Register(([]*accounting.Account)(nil))
 	gob.Register((*accounting.Account)(nil))
 	gob.Register(([]*accounting.Transaction)(nil))
 	r := mux.NewRouter()
 	r.HandleFunc(PathPrefix, getAllHandler(accounting.AllChartsOfAccounts)).Methods("GET")
-	r.HandleFunc(PathPrefix, postHandler(accounting.SaveChartOfAccounts)).Methods("POST")
+	r.HandleFunc(PathPrefix, postHandler2(coaPostHandler, true)).Methods("POST")
+	r.HandleFunc(PathPrefix+"/{coa}", postHandler(accounting.SaveChartOfAccounts)).Methods("PUT")
 	r.HandleFunc(PathPrefix+"/{coa}/accounts", getAllHandler(accounting.AllAccounts)).Methods("GET")
-	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}", getAllHandler(accounting.GetAccount)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}",
+		getAllHandler(accounting.GetAccount)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/accounts", postHandler(accounting.SaveAccount)).Methods("POST")
-	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}", postHandler(accounting.SaveAccount)).Methods("PUT")
-	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}", deleteHandler(accounting.DeleteAccount)).Methods("DELETE")
-	r.HandleFunc(PathPrefix+"/{coa}/transactions", getAllHandler(accounting.AllTransactions)).Methods("GET")
-	r.HandleFunc(PathPrefix+"/{coa}/transactions", postHandler(accounting.SaveTransaction)).Methods("POST")
-	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}", postHandler(accounting.SaveTransaction)).Methods("PUT")
-	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}", getAllHandler(accounting.GetTransaction)).Methods("GET")
-	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}", deleteHandler(accounting.DeleteTransaction)).Methods("DELETE")
+	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}",
+		postHandler(accounting.SaveAccount)).Methods("PUT")
+	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}",
+		deleteHandler(accounting.DeleteAccount)).Methods("DELETE")
+	r.HandleFunc(PathPrefix+"/{coa}/transactions",
+		getAllHandler(accounting.AllTransactions)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/transactions",
+		postHandler(accounting.SaveTransaction)).Methods("POST")
+	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}",
+		postHandler(accounting.SaveTransaction)).Methods("PUT")
+	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}",
+		getAllHandler(accounting.GetTransaction)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}",
+		deleteHandler(accounting.DeleteTransaction)).Methods("DELETE")
 	r.HandleFunc(PathPrefix+"/{coa}/balance-sheet", getAllHandler(reporting.Balance)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/journal", getAllHandler(reporting.Journal)).Methods("GET")
-	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}/ledger", getAllHandler(reporting.Ledger)).Methods("GET")
-	r.HandleFunc(PathPrefix+"/{coa}/income-statement", getAllHandler(reporting.IncomeStatement)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}/ledger",
+		getAllHandler(reporting.Ledger)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/income-statement",
+		getAllHandler(reporting.IncomeStatement)).Methods("GET")
 	r.HandleFunc("/_ah/warmup", func(w http.ResponseWriter, r *http.Request) {
 		ac := appengine.NewContext(r)
 		c := newContext(ac)
@@ -63,9 +79,10 @@ func init() {
 		}
 		return
 	})
-	r.HandleFunc("/ping", errorHandler(func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error {
-		return nil
-	}))
+	r.HandleFunc("/ping",
+		errorHandler(func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error {
+			return nil
+		}))
 	r.HandleFunc("/password", postHandler(core.ChangePassword)).Methods("PUT")
 	r.HandleFunc("/users", getAllHandler(core.AllUsers)).Methods("GET")
 	r.HandleFunc("/users/{user}", getAllHandler(core.GetUser)).Methods("GET")
@@ -75,7 +92,20 @@ func init() {
 	http.Handle("/", r)
 }
 
-func getAllHandler(f func(context.Context, map[string]string, core.UserKey) (interface{}, error)) http.HandlerFunc {
+func coaPostHandler(c context.Context, m map[string]interface{}, p map[string]string,
+	u core.UserKey) (interface{}, error) {
+	if _, ok := p["coa"]; !ok {
+		c := m["_appengine_context"].(appengine.Context)
+		_, key, err := deb.NewDatastoreSpace(c, nil)
+		if err != nil {
+			return nil, err
+		}
+		p["space"] = key.Encode()
+	}
+	return accounting.SaveChartOfAccounts(c, m, p, u)
+}
+
+func getAllHandler(f readHandlerFunc) http.HandlerFunc {
 	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error {
 		params := mux.Vars(r)
 		for k, v := range r.URL.Query() {
@@ -89,7 +119,11 @@ func getAllHandler(f func(context.Context, map[string]string, core.UserKey) (int
 	})
 }
 
-func postHandler(f func(context.Context, map[string]interface{}, map[string]string, core.UserKey) (interface{}, error)) http.HandlerFunc {
+func postHandler(f writeHandlerFunc) http.HandlerFunc {
+	return postHandler2(f, false)
+}
+
+func postHandler2(f writeHandlerFunc, includeContextInMap bool) http.HandlerFunc {
 	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error {
 		/*
 			b, _ := ioutil.ReadAll(r.Body)
@@ -102,7 +136,11 @@ func postHandler(f func(context.Context, map[string]interface{}, map[string]stri
 		}
 
 		m := req.(map[string]interface{})
-		item, err := f(newContext(appengine.NewContext(r)), m, mux.Vars(r), userKey)
+		c := appengine.NewContext(r)
+		if includeContextInMap {
+			m["_appengine_context"] = c
+		}
+		item, err := f(newContext(c), m, mux.Vars(r), userKey)
 		if err != nil {
 			return badRequest{err}
 		}
@@ -113,7 +151,7 @@ func postHandler(f func(context.Context, map[string]interface{}, map[string]stri
 	})
 }
 
-func deleteHandler(f func(context.Context, map[string]interface{}, map[string]string, core.UserKey) (interface{}, error)) http.HandlerFunc {
+func deleteHandler(f writeHandlerFunc) http.HandlerFunc {
 	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error {
 
 		_, err := f(newContext(appengine.NewContext(r)), nil, mux.Vars(r), userKey)
@@ -129,10 +167,12 @@ type badRequest struct{ error }
 
 type notFound struct{ error }
 
-// errorHandler wraps a function returning an error by handling the error and returning a http.Handler.
+// errorHandler wraps a function returning an error by handling the error and
+// returning a http.Handler.
 // If the error is of the one of the types defined above, it is handled as described for every type.
 // If the error is of another type, it is considered as an internal error and its message is logged.
-func errorHandler(f func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error) http.HandlerFunc {
+func errorHandler(
+	f func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var credentials string
 		if _, ok := r.Header["Authorization"]; ok {
@@ -143,14 +183,14 @@ func errorHandler(f func(w http.ResponseWriter, r *http.Request, userKey core.Us
 		}
 		b, err := base64.StdEncoding.DecodeString(credentials)
 		if err != nil {
-			http.Error(w, "Internal error:"+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Internal error(1):"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		arr := strings.Split(string(b), ":")
 		c := newContext(appengine.NewContext(r))
 		err, ok, userKey := core.Login(c, arr[0], arr[1])
 		if err != nil {
-			http.Error(w, "Internal error:"+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Internal error(2):"+err.Error(), http.StatusInternalServerError)
 			return
 		}
 		if !ok {
@@ -168,7 +208,7 @@ func errorHandler(f func(w http.ResponseWriter, r *http.Request, userKey core.Us
 			http.Error(w, "Error: item not found", http.StatusNotFound)
 		default:
 			log.Println(err)
-			http.Error(w, "Internal error:"+err.Error(), http.StatusInternalServerError)
+			http.Error(w, "Internal error(3):"+err.Error(), http.StatusInternalServerError)
 		}
 	}
 }
