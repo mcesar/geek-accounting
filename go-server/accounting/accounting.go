@@ -1,12 +1,15 @@
 package accounting
 
 import (
+	"bytes"
+	"encoding/gob"
 	"fmt"
 	"github.com/mcesarhm/geek-accounting/go-server/context"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"github.com/mcesarhm/geek-accounting/go-server/extensions/collections"
 	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
+
 	//"log"
 	"mcesar.io/deb"
 	"sort"
@@ -38,6 +41,7 @@ type Account struct {
 	Parent  db.CKey      `json:"parent"`
 	User    core.UserKey `json:"user"`
 	AsOf    time.Time    `json:"timestamp"`
+	Created time.Time    `json:"-"`
 	Removed bool         `json:"-"`
 }
 
@@ -157,10 +161,10 @@ type Entry struct {
 }
 
 type transactionMetadata struct {
-	memo    string
-	tags    []string
-	user    core.UserKey
-	removes uint64
+	Memo    string
+	Tags    []string
+	User    core.UserKey
+	Removes int64
 }
 
 func (transaction *Transaction) ValidationMessage(db db.Db, param map[string]string) string {
@@ -338,6 +342,7 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 		Tags:    []string{},
 		User:    userKey,
 		AsOf:    time.Now(),
+		Created: time.Now(),
 		Removed: false}
 
 	isUpdate := false
@@ -364,6 +369,7 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 		}
 		account.Parent = a.Parent
 		account.Number = a.Number
+		account.Created = a.Created
 	}
 	if parentNumber, ok := m["parent"]; ok {
 		var accounts []Account
@@ -598,14 +604,56 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 	transaction.SetKey(transactionKey)
 	item = transaction
 
-	appendTransactionOnSpace(m["space"].(deb.Space), transaction)
+	err = appendTransactionOnSpace(c, coaKey.Encode(), m["space"].(deb.Space), transaction)
 
 	return
 }
 
-func appendTransactionOnSpace(space deb.Space, transaction *Transaction) error {
-	//space.Append(deb.NewSmallSpace(deb.Array({{{}}}), metadata))
-	return nil
+func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
+	transaction *Transaction) error {
+	var accounts []*Account
+	keys, _, err := c.Db.GetAllFromCache("Account", coaKey, &accounts, nil,
+		[]string{"Created"}, c.Cache, "accounts_"+coaKey)
+	if err != nil {
+		return err
+	}
+	values := make([]int64, len(accounts))
+	for _, e := range transaction.Debits {
+		found := false
+		for i, k := range keys {
+			if k.Encode() == e.Account.Encode() {
+				values[i] = int64(e.Value * 100)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("Account %v not found", e.Account.Encode())
+		}
+	}
+	for _, e := range transaction.Credits {
+		found := false
+		for i, k := range keys {
+			if k.Encode() == e.Account.Encode() {
+				values[i] = -int64(e.Value * 100)
+				found = true
+				break
+			}
+		}
+		if !found {
+			return fmt.Errorf("Account %v not found", e.Account.Encode())
+		}
+	}
+	dateOffset :=
+		transaction.Date.Year()*10000 + int(transaction.Date.Month())*100 + transaction.Date.Day()
+	metadata := transactionMetadata{transaction.Memo, transaction.Tags, transaction.User, -1}
+	var buf bytes.Buffer
+	enc := gob.NewEncoder(&buf)
+	if err := enc.Encode(metadata); err != nil {
+		return err
+	}
+	return space.Append(deb.NewSmallSpaceWithOffset(deb.Array{{values}}.Transposed(),
+		uint64(dateOffset), uint64(transaction.AsOf.UnixNano()), [][][]byte{{buf.Bytes()}}))
 }
 
 func DeleteTransaction(c context.Context, m map[string]interface{}, param map[string]string,
@@ -638,6 +686,9 @@ func DeleteTransaction(c context.Context, m map[string]interface{}, param map[st
 
 func Accounts(c context.Context, coaKey string, filters map[string]interface{}) (keys db.Keys,
 	accounts []*Account, err error) {
+	if filters == nil {
+		filters = map[string]interface{}{}
+	}
 	filters["Removed ="] = false
 	keys, _, err = c.Db.GetAllFromCache("Account", coaKey, &accounts, filters, []string{"Number"},
 		c.Cache, "accounts_"+coaKey)
