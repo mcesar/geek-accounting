@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	//"runtime/debug"
+	"fmt"
 	"github.com/gorilla/mux"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting/reporting"
@@ -21,19 +22,22 @@ import (
 	"strings"
 
 	"appengine"
-	//_ "appengine/remote_api"
+	"appengine/datastore"
 )
 
 const PathPrefix = "/charts-of-accounts"
 
-type readHandlerFunc func(context.Context, map[string]string, core.UserKey) (interface{}, error)
+type readHandlerFunc func(context.Context, map[string]interface{}, map[string]string,
+	core.UserKey) (interface{}, error)
 
-type writeHandlerFunc func(context.Context, map[string]interface{}, map[string]string, core.UserKey) (interface{}, error)
+type writeHandlerFunc func(context.Context, map[string]interface{}, map[string]string,
+	core.UserKey) (interface{}, error)
 
 func init() {
 	gob.Register(([]*accounting.Account)(nil))
 	gob.Register((*accounting.Account)(nil))
 	gob.Register(([]*accounting.Transaction)(nil))
+	gob.Register(([]*accounting.ChartOfAccounts)(nil))
 	r := mux.NewRouter()
 	r.HandleFunc(PathPrefix, getAllHandler(accounting.AllChartsOfAccounts)).Methods("GET")
 	r.HandleFunc(PathPrefix, postHandler2(coaPostHandler, true)).Methods("POST")
@@ -111,7 +115,17 @@ func getAllHandler(f readHandlerFunc) http.HandlerFunc {
 		for k, v := range r.URL.Query() {
 			params[k] = v[0]
 		}
-		items, err := f(newContext(appengine.NewContext(r)), params, userKey)
+		ctx := appengine.NewContext(r)
+		c := newContext(ctx)
+		m := map[string]interface{}{}
+		if coaKey, ok := params["coa"]; ok {
+			space, err := space(c, ctx, coaKey)
+			if err != nil {
+				return err
+			}
+			m["space"] = space
+		}
+		items, err := f(c, m, params, userKey)
 		if err != nil {
 			return err
 		}
@@ -136,11 +150,20 @@ func postHandler2(f writeHandlerFunc, includeContextInMap bool) http.HandlerFunc
 		}
 
 		m := req.(map[string]interface{})
-		c := appengine.NewContext(r)
+		ctx := appengine.NewContext(r)
+		c := newContext(ctx)
 		if includeContextInMap {
 			m["_appengine_context"] = c
 		}
-		item, err := f(newContext(c), m, mux.Vars(r), userKey)
+		params := mux.Vars(r)
+		if coaKey, ok := params["coa"]; ok {
+			space, err := space(c, ctx, coaKey)
+			if err != nil {
+				return err
+			}
+			m["space"] = space
+		}
+		item, err := f(c, m, params, userKey)
 		if err != nil {
 			return badRequest{err}
 		}
@@ -153,8 +176,18 @@ func postHandler2(f writeHandlerFunc, includeContextInMap bool) http.HandlerFunc
 
 func deleteHandler(f writeHandlerFunc) http.HandlerFunc {
 	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error {
-
-		_, err := f(newContext(appengine.NewContext(r)), nil, mux.Vars(r), userKey)
+		var m map[string]interface{}
+		params := mux.Vars(r)
+		ctx := appengine.NewContext(r)
+		c := newContext(ctx)
+		if coaKey, ok := params["coa"]; ok {
+			space, err := space(c, ctx, coaKey)
+			if err != nil {
+				return err
+			}
+			m["space"] = space
+		}
+		_, err := f(c, nil, params, userKey)
 		if err != nil {
 			return badRequest{err}
 		}
@@ -215,4 +248,27 @@ func errorHandler(
 
 func newContext(ac appengine.Context) context.Context {
 	return context.Context{Db: db.NewAppengineDb(ac), Cache: cache.NewAppengineCache(ac)}
+}
+
+func space(c context.Context, ctx appengine.Context, coaKey string) (deb.Space, error) {
+	var coas []*accounting.ChartOfAccounts
+	keys, _, err := c.Db.GetAllFromCache("ChartOfAccounts", "", &coas, nil, nil, c.Cache,
+		"ChartOfAccounts")
+	if err != nil {
+		return nil, err
+	}
+	for i, coa := range coas {
+		if keys[i].Encode() == coaKey {
+			k, err := datastore.DecodeKey(coa.Space.Encode())
+			if err != nil {
+				return nil, err
+			}
+			s, _, err := deb.NewDatastoreSpace(ctx, k)
+			if err != nil {
+				return nil, err
+			}
+			return s, nil
+		}
+	}
+	return nil, fmt.Errorf("Chart of accounts not found")
 }

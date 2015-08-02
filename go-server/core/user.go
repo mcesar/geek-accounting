@@ -85,12 +85,14 @@ func ChangePassword(c context.Context, m map[string]interface{}, _ map[string]st
 	return
 }
 
-func AllUsers(c context.Context, _ map[string]string, _ UserKey) (interface{}, error) {
+func AllUsers(c context.Context, _ map[string]interface{}, _ map[string]string,
+	_ UserKey) (interface{}, error) {
 	users, _, err := c.Db.GetAll("User", realm(c.Db), &[]User{}, nil, []string{"User"})
 	return users, err
 }
 
-func GetUser(c context.Context, param map[string]string, _ UserKey) (interface{}, error) {
+func GetUser(c context.Context, _ map[string]interface{}, param map[string]string,
+	_ UserKey) (interface{}, error) {
 	return c.Db.Get(&User{}, param["user"])
 }
 

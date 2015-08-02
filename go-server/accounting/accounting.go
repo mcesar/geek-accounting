@@ -7,7 +7,7 @@ import (
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"github.com/mcesarhm/geek-accounting/go-server/extensions/collections"
 	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
-	_ "log"
+	//"log"
 	//"mcesar.io/deb"
 	"sort"
 	"strings"
@@ -254,12 +254,15 @@ func (entry *Entry) ValidationMessage(db db.Db, param map[string]string) string 
 	return ""
 }
 
-func AllChartsOfAccounts(c context.Context, _ map[string]string, _ core.UserKey) (interface{}, error) {
-	_, chartsOfAccounts, err := c.Db.GetAll("ChartOfAccounts", "", &[]ChartOfAccounts{}, nil, []string{"Name"})
+func AllChartsOfAccounts(c context.Context, m map[string]interface{}, _ map[string]string,
+	_ core.UserKey) (interface{}, error) {
+	_, chartsOfAccounts, err := c.Db.GetAll("ChartOfAccounts", "", &[]ChartOfAccounts{}, nil,
+		[]string{"Name"})
 	return chartsOfAccounts, err
 }
 
-func SaveChartOfAccounts(c context.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (interface{}, error) {
+func SaveChartOfAccounts(c context.Context, m map[string]interface{}, param map[string]string,
+	userKey core.UserKey) (interface{}, error) {
 	coa := &ChartOfAccounts{
 		Name: m["name"].(string),
 		User: userKey,
@@ -283,15 +286,21 @@ func SaveChartOfAccounts(c context.Context, m map[string]interface{}, param map[
 		}
 	}
 	_, err := c.Db.Save(coa, "ChartOfAccounts", "", param)
+	if err != nil {
+		return nil, err
+	}
+	err = c.Cache.Delete("ChartOfAccounts")
 	return coa, err
 }
 
-func AllAccounts(c context.Context, param map[string]string, _ core.UserKey) (interface{}, error) {
+func AllAccounts(c context.Context, m map[string]interface{}, param map[string]string,
+	_ core.UserKey) (interface{}, error) {
 	_, accounts, err := c.Db.GetAll("Account", param["coa"], &[]Account{}, nil, []string{"Number"})
 	return accounts, err
 }
 
-func GetAccount(c context.Context, param map[string]string, _ core.UserKey) (result interface{}, err error) {
+func GetAccount(c context.Context, m map[string]interface{}, param map[string]string,
+	_ core.UserKey) (result interface{}, err error) {
 	return c.Db.Get(&Account{}, param["account"])
 }
 
@@ -403,7 +412,8 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 	return
 }
 
-func DeleteAccount(c context.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (_ interface{}, err error) {
+func DeleteAccount(c context.Context, m map[string]interface{}, param map[string]string,
+	userKey core.UserKey) (_ interface{}, err error) {
 
 	key, err := c.Db.DecodeKey(param["account"])
 	if err != nil {
@@ -430,11 +440,13 @@ func DeleteAccount(c context.Context, m map[string]interface{}, param map[string
 	if err != nil {
 		return
 	}
-	err = checkReferences("Transaction", "Debits.Account = ", "Transactions referencing this account was found")
+	err = checkReferences("Transaction", "Debits.Account = ",
+		"Transactions referencing this account was found")
 	if err != nil {
 		return
 	}
-	err = checkReferences("Transaction", "Credits.Account = ", "Transactions referencing this account was found")
+	err = checkReferences("Transaction", "Credits.Account = ",
+		"Transactions referencing this account was found")
 	if err != nil {
 		return
 	}
@@ -449,16 +461,24 @@ func DeleteAccount(c context.Context, m map[string]interface{}, param map[string
 
 }
 
-func AllTransactions(c context.Context, param map[string]string, _ core.UserKey) (interface{}, error) {
-	_, transactions, err := c.Db.GetAll("Transaction", param["coa"], &[]Transaction{}, nil, []string{"Date", "AsOf"})
+func AllTransactions(c context.Context, m map[string]interface{}, param map[string]string,
+	_ core.UserKey) (interface{}, error) {
+	_, transactions, err := c.Db.GetAll("Transaction", param["coa"], &[]Transaction{}, nil,
+		[]string{"Date", "AsOf"})
 	return transactions, err
 }
 
-func GetTransaction(c context.Context, param map[string]string, _ core.UserKey) (result interface{}, err error) {
+func GetTransaction(c context.Context, m map[string]interface{}, param map[string]string,
+	_ core.UserKey) (result interface{}, err error) {
 	return c.Db.Get(&Transaction{}, param["transaction"])
 }
 
-func SaveTransaction(c context.Context, m map[string]interface{}, param map[string]string, userKey core.UserKey) (item interface{}, err error) {
+func SaveTransaction(c context.Context, m map[string]interface{}, param map[string]string,
+	userKey core.UserKey) (item interface{}, err error) {
+
+	//space := m["space"].(deb.Space)
+
+	//space.Append(deb.NewSmallSpace(deb.Array({{{}}}), metadata))
 
 	asOf := time.Now()
 

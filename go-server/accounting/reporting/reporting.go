@@ -13,13 +13,14 @@ import (
 	"time"
 )
 
-func Balance(c context.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
+func Balance(c context.Context, m map[string]interface{}, param map[string]string,
+	_ core.UserKey) (result interface{}, err error) {
 	from := time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC)
-	to, err := time.Parse(time.RFC3339, m["at"]+"T00:00:00Z")
+	to, err := time.Parse(time.RFC3339, param["at"]+"T00:00:00Z")
 	if err != nil {
 		return
 	}
-	b, err := accounting.Balances(c, m["coa"], from, to, map[string]interface{}{"Tags =": "balanceSheet"})
+	b, err := accounting.Balances(c, param["coa"], from, to, map[string]interface{}{"Tags =": "balanceSheet"})
 	if err != nil {
 		return
 	}
@@ -33,23 +34,25 @@ func Balance(c context.Context, m map[string]string, _ core.UserKey) (result int
 	return
 }
 
-func Journal(c context.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
+func Journal(c context.Context, m map[string]interface{}, param map[string]string,
+	_ core.UserKey) (result interface{}, err error) {
 
-	from, err := time.Parse(time.RFC3339, m["from"]+"T00:00:00Z")
+	from, err := time.Parse(time.RFC3339, param["from"]+"T00:00:00Z")
 	if err != nil {
 		return
 	}
-	to, err := time.Parse(time.RFC3339, m["to"]+"T00:00:00Z")
-	if err != nil {
-		return
-	}
-
-	accountKeys, accounts, err := accounting.Accounts(c, m["coa"], nil)
+	to, err := time.Parse(time.RFC3339, param["to"]+"T00:00:00Z")
 	if err != nil {
 		return
 	}
 
-	transactionKeys, transactions, err := accounting.Transactions(c, m["coa"], map[string]interface{}{"Date >=": from, "Date <=": to})
+	accountKeys, accounts, err := accounting.Accounts(c, param["coa"], nil)
+	if err != nil {
+		return
+	}
+
+	transactionKeys, transactions, err := accounting.Transactions(c, param["coa"],
+		map[string]interface{}{"Date >=": from, "Date <=": to})
 	if err != nil {
 		return
 	}
@@ -91,18 +94,19 @@ func Journal(c context.Context, m map[string]string, _ core.UserKey) (result int
 	return
 }
 
-func Ledger(c context.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
+func Ledger(c context.Context, m map[string]interface{}, param map[string]string,
+	_ core.UserKey) (result interface{}, err error) {
 
-	from, err := time.Parse(time.RFC3339, m["from"]+"T00:00:00Z")
+	from, err := time.Parse(time.RFC3339, param["from"]+"T00:00:00Z")
 	if err != nil {
 		return
 	}
-	to, err := time.Parse(time.RFC3339, m["to"]+"T00:00:00Z")
+	to, err := time.Parse(time.RFC3339, param["to"]+"T00:00:00Z")
 	if err != nil {
 		return
 	}
 
-	accountKeys, accounts, err := accounting.Accounts(c, m["coa"], nil)
+	accountKeys, accounts, err := accounting.Accounts(c, param["coa"], nil)
 	if err != nil {
 		return
 	}
@@ -110,7 +114,7 @@ func Ledger(c context.Context, m map[string]string, _ core.UserKey) (result inte
 	var account *accounting.Account
 	accountsMap := map[string]*accounting.Account{}
 	for i, a := range accounts {
-		if a.Number == m["account"] || accountKeys.KeyAt(i).Encode() == m["account"] {
+		if a.Number == param["account"] || accountKeys.KeyAt(i).Encode() == param["account"] {
 			account = a
 			account.SetKey(accountKeys.KeyAt(i))
 		}
@@ -121,7 +125,7 @@ func Ledger(c context.Context, m map[string]string, _ core.UserKey) (result inte
 		return
 	}
 
-	transactions, balance, err := accounting.TransactionsWithValue(c, m["coa"], account, from, to)
+	transactions, balance, err := accounting.TransactionsWithValue(c, param["coa"], account, from, to)
 	if err != nil {
 		return
 	}
@@ -172,17 +176,18 @@ func Ledger(c context.Context, m map[string]string, _ core.UserKey) (result inte
 	return
 }
 
-func IncomeStatement(c context.Context, m map[string]string, _ core.UserKey) (result interface{}, err error) {
-	from, err := time.Parse(time.RFC3339, m["from"]+"T00:00:00Z")
+func IncomeStatement(c context.Context, m map[string]interface{}, param map[string]string,
+	_ core.UserKey) (result interface{}, err error) {
+	from, err := time.Parse(time.RFC3339, param["from"]+"T00:00:00Z")
 	if err != nil {
 		return
 	}
-	to, err := time.Parse(time.RFC3339, m["to"]+"T00:00:00Z")
+	to, err := time.Parse(time.RFC3339, param["to"]+"T00:00:00Z")
 	if err != nil {
 		return
 	}
 
-	balances, err := accounting.Balances(c, m["coa"], from, to, map[string]interface{}{"Tags =": "incomeStatement"})
+	balances, err := accounting.Balances(c, param["coa"], from, to, map[string]interface{}{"Tags =": "incomeStatement"})
 	if err != nil {
 		return
 	}
