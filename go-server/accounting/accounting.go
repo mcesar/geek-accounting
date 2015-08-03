@@ -581,32 +581,33 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 
 	transaction.updateAccountsKeysAsString()
 
-	if k, err := c.Db.Save(transaction, "Transaction", param["coa"], param); err != nil {
-		return nil, err
+	space := m["space"].(deb.Space)
+	if space == nil {
+		if k, err := c.Db.Save(transaction, "Transaction", param["coa"], param); err != nil {
+			return nil, err
+		} else {
+			transactionKey = k
+		}
+		if isUpdate {
+			if err = c.Cache.Delete("transactions_asof_" + coaKey.Encode()); err != nil {
+				return nil, err
+			}
+			if err = c.Cache.Delete("balances_asof_" + coaKey.Encode()); err != nil {
+				return nil, err
+			}
+			err = nil
+		} else {
+			if err = c.Cache.Set("transactions_asof_"+coaKey.Encode(), asOf); err != nil {
+				return nil, err
+			}
+		}
+		err = c.Cache.Delete("transactions_" + coaKey.Encode())
+		transaction.SetKey(transactionKey)
 	} else {
-		transactionKey = k
+		err = appendTransactionOnSpace(c, coaKey.Encode(), space, transaction)
 	}
 
-	if isUpdate {
-		if err = c.Cache.Delete("transactions_asof_" + coaKey.Encode()); err != nil {
-			return nil, err
-		}
-		if err = c.Cache.Delete("balances_asof_" + coaKey.Encode()); err != nil {
-			return nil, err
-		}
-		err = nil
-	} else {
-		if err = c.Cache.Set("transactions_asof_"+coaKey.Encode(), asOf); err != nil {
-			return nil, err
-		}
-	}
-
-	err = c.Cache.Delete("transactions_" + coaKey.Encode())
-
-	transaction.SetKey(transactionKey)
 	item = transaction
-
-	err = appendTransactionOnSpace(c, coaKey.Encode(), m["space"].(deb.Space), transaction)
 
 	return
 }
@@ -646,8 +647,8 @@ func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
 			return fmt.Errorf("Account %v not found", e.Account.Encode())
 		}
 	}
-	d := transaction.Date.Add(-time.Hour * 24)
-	dateOffset := d.Year()*10000 + int(d.Month())*100 + d.Day()
+	d := transaction.Date.AddDate(0, 0, -1)
+	dateOffset := SerializedDate(d)
 	metadata := transactionMetadata{transaction.Memo, transaction.Tags, transaction.User, -1}
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
@@ -686,6 +687,52 @@ func DeleteTransaction(c context.Context, m map[string]interface{}, param map[st
 
 }
 
+type byCreation struct {
+	a []*Account
+	k db.Keys
+}
+
+func (a byCreation) Len() int           { return len(a.a) }
+func (a byCreation) Swap(i, j int)      { a.a[i], a.a[j] = a.a[j], a.a[i]; a.k[i], a.k[j] = a.k[j], a.k[i] }
+func (a byCreation) Less(i, j int) bool { return a.a[i].Created.Before(a.a[j].Created) }
+
+func AccountKeysByCreation(accounts []*Account, keys db.Keys) db.Keys {
+	sortedAccounts := make([]*Account, len(accounts))
+	sortedKeys := make(db.Keys, len(keys))
+	copy(sortedAccounts, accounts)
+	copy(sortedKeys, keys)
+	sort.Sort(byCreation{sortedAccounts, sortedKeys})
+	return sortedKeys
+}
+
+func NewTransactionFromSpace(t *deb.Transaction, keys db.Keys) (*Transaction, error) {
+	d := time.Date(int(t.Date%100000000/10000), time.Month(t.Date%10000/100), int(t.Date%100),
+		0, 0, 0, 0, time.UTC)
+	m := time.Unix(0, int64(t.Moment))
+	buf := bytes.NewBuffer(t.Metadata)
+	dec := gob.NewDecoder(buf)
+	var tm transactionMetadata
+	if err := dec.Decode(&tm); err != nil {
+		return nil, err
+	}
+	deb := []Entry{}
+	cre := []Entry{}
+	for k, v := range t.Entries {
+		if v > 0 {
+			deb = append(deb, Entry{Account: keys[k-1], Value: float64(v) / 100})
+		} else {
+			cre = append(cre, Entry{Account: keys[k-1], Value: -float64(v) / 100})
+		}
+	}
+	transaction := &Transaction{Date: d, AsOf: m, Debits: deb, Credits: cre,
+		Memo: tm.Memo, Tags: tm.Tags, User: tm.User}
+	return transaction, nil
+}
+
+func SerializedDate(d time.Time) deb.Date {
+	return deb.Date(d.Year()*10000 + int(d.Month())*100 + d.Day())
+}
+
 func Accounts(c context.Context, coaKey string, filters map[string]interface{}) (keys db.Keys,
 	accounts []*Account, err error) {
 	if filters == nil {
@@ -713,18 +760,11 @@ func Transactions(c context.Context, coaKey string, filters map[string]interface
 type TransactionWithValue struct {
 	Transaction
 	Value float64
+	Key   interface{}
 }
 
 func TransactionsWithValue(c context.Context, coaKey string, account *Account, from,
 	to time.Time) (transactionsWithValue []*TransactionWithValue, balance float64, err error) {
-
-	var keys db.Keys
-	var transactions []*Transaction
-	if keys, _, err = c.Db.GetAll("Transaction", coaKey, &transactions,
-		db.M{"AccountsKeysAsString =": account.Key.Encode(), "Date >=": from, "Date <=": to},
-		[]string{"Date", "AsOf"}); err != nil {
-		return
-	}
 
 	b, err := Balances(c, coaKey, time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC),
 		from.AddDate(0, 0, -1), map[string]interface{}{"Number =": account.Number})
@@ -735,9 +775,25 @@ func TransactionsWithValue(c context.Context, coaKey string, account *Account, f
 	if len(b) > 0 {
 		balance = b[0]["value"].(float64)
 	}
-	var (
-		t *TransactionWithValue
-	)
+
+	var dbkeys db.Keys
+	var transactions []*Transaction
+	if dbkeys, _, err = c.Db.GetAll("Transaction", coaKey, &transactions,
+		db.M{"AccountsKeysAsString =": account.Key.Encode(), "Date >=": from, "Date <=": to},
+		[]string{"Date", "AsOf"}); err != nil {
+		return
+	}
+	keys := make([]interface{}, len(dbkeys))
+	for i, k := range dbkeys {
+		keys[i] = k
+	}
+	transactionsWithValue = TransactionsWithValueFromTransactions(transactions, keys, account)
+	return
+}
+
+func TransactionsWithValueFromTransactions(transactions []*Transaction, keys []interface{},
+	account *Account) []*TransactionWithValue {
+	var t *TransactionWithValue
 	lookupAccount := func(key db.Key) *Account {
 		if key.String() == account.Key.String() {
 			return account
@@ -747,13 +803,13 @@ func TransactionsWithValue(c context.Context, coaKey string, account *Account, f
 	addValue := func(key db.Key, value float64) {
 		t.Value += value
 	}
+	transactionsWithValue := []*TransactionWithValue{}
 	for i, t_ := range transactions {
-		t = &TransactionWithValue{*t_, 0}
-		t.SetKey(keys.KeyAt(i))
+		t = &TransactionWithValue{*t_, 0, keys[i]}
 		t.incrementValue(lookupAccount, addValue)
 		transactionsWithValue = append(transactionsWithValue, t)
 	}
-	return
+	return transactionsWithValue
 }
 
 type ByDateAndAsOf []*Transaction

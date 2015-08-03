@@ -2,11 +2,14 @@ package reporting
 
 import (
 	"fmt"
+	"sort"
+
 	"github.com/mcesarhm/geek-accounting/go-server/accounting"
 	"github.com/mcesarhm/geek-accounting/go-server/context"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"github.com/mcesarhm/geek-accounting/go-server/extensions/collections"
+	"mcesar.io/deb"
 	//"log"
 	"math"
 	"strings"
@@ -51,10 +54,32 @@ func Journal(c context.Context, m map[string]interface{}, param map[string]strin
 		return
 	}
 
-	transactionKeys, transactions, err := accounting.Transactions(c, param["coa"],
-		map[string]interface{}{"Date >=": from, "Date <=": to})
-	if err != nil {
-		return
+	space := m["space"].(deb.Space)
+
+	var transactions []*accounting.Transaction
+	var transactionKeys []interface{}
+	if space == nil {
+		var keys db.Keys
+		keys, transactions, err = accounting.Transactions(c, param["coa"],
+			map[string]interface{}{"Date >=": from, "Date <=": to})
+		if err != nil {
+			return nil, err
+		}
+		transactionKeys = make([]interface{}, len(keys))
+		for i, k := range keys {
+			transactionKeys[i] = k
+		}
+	} else {
+		journal, err := space.Slice(nil,
+			[]deb.DateRange{deb.DateRange{Start: accounting.SerializedDate(from),
+				End: accounting.SerializedDate(to)}}, nil)
+		if err != nil {
+			return nil, err
+		}
+		transactions, transactionKeys, err = transactionsFromSpace(journal, accounts, accountKeys)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	accountsMap := map[string]*accounting.Account{}
@@ -80,7 +105,7 @@ func Journal(c context.Context, m map[string]interface{}, param map[string]strin
 
 	for i, t := range transactions {
 		m := map[string]interface{}{
-			"_id":     transactionKeys.KeyAt(i),
+			"_id":     transactionKeys[i],
 			"date":    t.Date,
 			"memo":    t.Memo,
 			"debits":  addEntries(t.Debits),
@@ -125,10 +150,52 @@ func Ledger(c context.Context, m map[string]interface{}, param map[string]string
 		return
 	}
 
-	transactions, balance, err := accounting.TransactionsWithValue(c, param["coa"], account, from, to)
-	if err != nil {
-		return
+	var transactions []*accounting.TransactionWithValue
+	var balance float64
+	space := m["space"].(deb.Space)
+	if space == nil {
+		transactions, balance, err =
+			accounting.TransactionsWithValue(c, param["coa"], account, from, to)
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		sortedKeys := accounting.AccountKeysByCreation(accounts, accountKeys)
+		var accountIndex deb.Account
+		for i, k := range sortedKeys {
+			if k == account.GetKey() {
+				accountIndex = deb.Account(i + 1)
+				break
+			}
+		}
+		balanceSpace, err := space.Projection([]deb.Account{accountIndex},
+			[]deb.DateRange{deb.DateRange{
+				Start: deb.Date(0),
+				End:   accounting.SerializedDate(from.AddDate(0, 0, -1))}}, nil)
+		ch, errc := balanceSpace.Transactions()
+		for t := range ch {
+			balance = float64(t.Entries[accountIndex]) / 100
+		}
+		if err = <-errc; err != nil {
+			return nil, err
+		}
+		if collections.Contains(account.Tags, "creditBalance") {
+			balance = -balance
+		}
+		ledger, err := space.Slice([]deb.Account{accountIndex},
+			[]deb.DateRange{deb.DateRange{Start: accounting.SerializedDate(from),
+				End: accounting.SerializedDate(to)}}, nil)
+		if err != nil {
+			return nil, err
+		}
+		txs, transactionKeys, err := transactionsFromSpace(ledger, accounts, accountKeys)
+		if err != nil {
+			return nil, err
+		}
+		transactions = accounting.TransactionsWithValueFromTransactions(txs, transactionKeys,
+			account)
 	}
+
 	resultEntries := []interface{}{}
 	runningBalance := balance
 	addEntries := func(t *accounting.TransactionWithValue, entries []accounting.Entry, counterpartEntries []accounting.Entry, kind string) {
@@ -338,4 +405,32 @@ func accountToMap(account *accounting.Account) map[string]interface{} {
 		"debitBalance":  collections.Contains(account.Tags, "debitBalance"),
 		"creditBalance": collections.Contains(account.Tags, "creditBalance"),
 	}
+}
+
+func transactionsFromSpace(space deb.Space, accounts []*accounting.Account,
+	accountKeys db.Keys) ([]*accounting.Transaction, []interface{}, error) {
+	sortedKeys := accounting.AccountKeysByCreation(accounts, accountKeys)
+	ch, errc := space.Transactions()
+	transactions := []*accounting.Transaction{}
+	var err error
+	for t := range ch {
+		if err != nil {
+			continue
+		}
+		var tx *accounting.Transaction
+		tx, err = accounting.NewTransactionFromSpace(t, sortedKeys)
+		transactions = append(transactions, tx)
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if err = <-errc; err != nil {
+		return nil, nil, err
+	}
+	sort.Sort(accounting.ByDateAndAsOf(transactions))
+	transactionKeys := make([]interface{}, len(transactions))
+	for i, t := range transactions {
+		transactionKeys[i] = t.AsOf
+	}
+	return transactions, transactionKeys, nil
 }
