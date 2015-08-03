@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+
 	"github.com/mcesarhm/geek-accounting/go-server/context"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
@@ -11,10 +12,11 @@ import (
 	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
 
 	//"log"
-	"mcesar.io/deb"
 	"sort"
 	"strings"
 	"time"
+
+	"mcesar.io/deb"
 )
 
 type ChartOfAccounts struct {
@@ -644,8 +646,8 @@ func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
 			return fmt.Errorf("Account %v not found", e.Account.Encode())
 		}
 	}
-	dateOffset :=
-		transaction.Date.Year()*10000 + int(transaction.Date.Month())*100 + transaction.Date.Day()
+	d := transaction.Date.Add(-time.Hour * 24)
+	dateOffset := d.Year()*10000 + int(d.Month())*100 + d.Day()
 	metadata := transactionMetadata{transaction.Memo, transaction.Tags, transaction.User, -1}
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
