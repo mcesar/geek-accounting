@@ -11,6 +11,8 @@ import (
 	"net/http"
 	//"runtime/debug"
 	"fmt"
+	"strings"
+
 	"github.com/gorilla/mux"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting"
 	"github.com/mcesarhm/geek-accounting/go-server/accounting/reporting"
@@ -19,7 +21,6 @@ import (
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"mcesar.io/deb"
-	"strings"
 
 	"appengine"
 	"appengine/datastore"
@@ -153,7 +154,7 @@ func postHandler2(f writeHandlerFunc, includeContextInMap bool) http.HandlerFunc
 		ctx := appengine.NewContext(r)
 		c := newContext(ctx)
 		if includeContextInMap {
-			m["_appengine_context"] = c
+			m["_appengine_context"] = ctx
 		}
 		params := mux.Vars(r)
 		if coaKey, ok := params["coa"]; ok {
