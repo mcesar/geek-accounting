@@ -23,8 +23,8 @@ func Balance(c context.Context, m map[string]interface{}, param map[string]strin
 		return
 	}
 	arr := []db.M{}
-	space := m["space"].(deb.Space)
-	if space == nil {
+	space_, ok := m["space"]
+	if !ok {
 		b, err := accounting.Balances(c, param["coa"], from, to,
 			map[string]interface{}{"Tags =": "balanceSheet"})
 		if err != nil {
@@ -37,6 +37,7 @@ func Balance(c context.Context, m map[string]interface{}, param map[string]strin
 				"value":   e["value"]})
 		}
 	} else {
+		space := space_.(deb.Space)
 		accountKeys, accounts, err := accounting.Accounts(c, param["coa"], nil)
 		if err != nil {
 			return nil, err
@@ -88,11 +89,11 @@ func Journal(c context.Context, m map[string]interface{}, param map[string]strin
 		return
 	}
 
-	space := m["space"].(deb.Space)
+	space_, ok := m["space"]
 
 	var transactions []*accounting.Transaction
 	var transactionKeys []interface{}
-	if space == nil {
+	if !ok {
 		var keys db.Keys
 		keys, transactions, err = accounting.Transactions(c, param["coa"],
 			map[string]interface{}{"Date >=": from, "Date <=": to})
@@ -104,6 +105,7 @@ func Journal(c context.Context, m map[string]interface{}, param map[string]strin
 			transactionKeys[i] = k
 		}
 	} else {
+		space := space_.(deb.Space)
 		journal, err := space.Slice(nil,
 			[]deb.DateRange{deb.DateRange{Start: accounting.SerializedDate(from),
 				End: accounting.SerializedDate(to)}}, nil)
@@ -187,14 +189,15 @@ func Ledger(c context.Context, m map[string]interface{}, param map[string]string
 
 	var transactions []*accounting.TransactionWithValue
 	var balance float64
-	space := m["space"].(deb.Space)
-	if space == nil {
+	space_, ok := m["space"]
+	if !ok {
 		transactions, balance, err =
 			accounting.TransactionsWithValue(c, param["coa"], account, from, to)
 		if err != nil {
 			return nil, err
 		}
 	} else {
+		space := space_.(deb.Space)
 		_, sortedKeys := accounting.AccountsByCreation(accounts, accountKeys)
 		var accountIndex deb.Account
 		for i, k := range sortedKeys {
@@ -293,15 +296,16 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 		return
 	}
 
-	space := m["space"].(deb.Space)
+	space_, ok := m["space"]
 	var balances []db.M
-	if space == nil {
+	if !ok {
 		balances, err = accounting.Balances(c, param["coa"], from, to,
 			map[string]interface{}{"Tags =": "incomeStatement"})
 		if err != nil {
 			return nil, err
 		}
 	} else {
+		space := space_.(deb.Space)
 		accountKeys, accounts, err := accounting.Accounts(c, param["coa"], nil)
 		if err != nil {
 			return nil, err
