@@ -2,7 +2,6 @@ package reporting
 
 import (
 	"fmt"
-	"sort"
 
 	"github.com/mcesarhm/geek-accounting/go-server/accounting"
 	"github.com/mcesarhm/geek-accounting/go-server/context"
@@ -111,7 +110,8 @@ func Journal(c context.Context, m map[string]interface{}, param map[string]strin
 		if err != nil {
 			return nil, err
 		}
-		transactions, transactionKeys, err = transactionsFromSpace(journal, accounts, accountKeys)
+		transactions, transactionKeys, err =
+			accounting.TransactionsFromSpace(journal, accounts, accountKeys)
 		if err != nil {
 			return nil, err
 		}
@@ -226,7 +226,8 @@ func Ledger(c context.Context, m map[string]interface{}, param map[string]string
 		if err != nil {
 			return nil, err
 		}
-		txs, transactionKeys, err := transactionsFromSpace(ledger, accounts, accountKeys)
+		txs, transactionKeys, err :=
+			accounting.TransactionsFromSpace(ledger, accounts, accountKeys)
 		if err != nil {
 			return nil, err
 		}
@@ -323,8 +324,7 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 					if collections.Contains(account.Tags, "creditBalance") {
 						value = -value
 					}
-					balances = append(balances,
-						db.M{"account": account, "value": value})
+					balances = append(balances, db.M{"account": account, "value": value})
 				}
 			}
 		}
@@ -485,32 +485,4 @@ func accountToMap(key interface{}, account *accounting.Account) map[string]inter
 		"debitBalance":  collections.Contains(account.Tags, "debitBalance"),
 		"creditBalance": collections.Contains(account.Tags, "creditBalance"),
 	}
-}
-
-func transactionsFromSpace(space deb.Space, accounts []*accounting.Account,
-	accountKeys db.Keys) ([]*accounting.Transaction, []interface{}, error) {
-	_, sortedKeys := accounting.AccountsByCreation(accounts, accountKeys)
-	ch, errc := space.Transactions()
-	transactions := []*accounting.Transaction{}
-	var err error
-	for t := range ch {
-		if err != nil {
-			continue
-		}
-		var tx *accounting.Transaction
-		tx, err = accounting.NewTransactionFromSpace(t, sortedKeys)
-		transactions = append(transactions, tx)
-	}
-	if err != nil {
-		return nil, nil, err
-	}
-	if err = <-errc; err != nil {
-		return nil, nil, err
-	}
-	sort.Sort(accounting.ByDateAndAsOf(transactions))
-	transactionKeys := make([]interface{}, len(transactions))
-	for i, t := range transactions {
-		transactionKeys[i] = t.AsOf
-	}
-	return transactions, transactionKeys, nil
 }

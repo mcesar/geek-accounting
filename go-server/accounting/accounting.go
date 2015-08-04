@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"strconv"
 
 	"github.com/mcesarhm/geek-accounting/go-server/context"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
@@ -155,6 +156,8 @@ type Transaction struct {
 	User                 core.UserKey `json:"user"`
 	AsOf                 time.Time    `json:"timestamp"`
 	AccountsKeysAsString []string     `json:"-"`
+	Moment               int64        `datastore:"-" json:"-"`
+	Key_                 interface{}  `datastore:"-" json:"_id"`
 }
 
 type Entry struct {
@@ -522,7 +525,32 @@ func AllTransactions(c context.Context, m map[string]interface{}, param map[stri
 
 func GetTransaction(c context.Context, m map[string]interface{}, param map[string]string,
 	_ core.UserKey) (result interface{}, err error) {
-	return c.Db.Get(&Transaction{}, param["transaction"])
+	space := m["space"].(deb.Space)
+	if space == nil {
+		return c.Db.Get(&Transaction{}, param["transaction"])
+	} else {
+		var moment deb.Moment
+		if key, err := strconv.ParseUint(param["transaction"], 10, 64); err != nil {
+			return nil, err
+		} else {
+			moment = deb.Moment(key)
+		}
+		space, err := space.Slice(nil, nil,
+			[]deb.MomentRange{deb.MomentRange{Start: moment, End: moment}})
+		if err != nil {
+			return nil, err
+		}
+		accountKeys, accounts, err := Accounts(c, param["coa"], nil)
+		if err != nil {
+			return nil, err
+		}
+		transactions, keys, err := TransactionsFromSpace(space, accounts, accountKeys)
+		if err != nil {
+			return nil, err
+		}
+		transactions[0].Key_ = keys[0]
+		return transactions[0], nil
+	}
 }
 
 func SaveTransaction(c context.Context, m map[string]interface{}, param map[string]string,
@@ -568,14 +596,8 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 		transaction.SetDebitsAndCredits(debits, credits)
 	}
 
-	var transactionKey db.Key
 	isUpdate := false
 	if _, ok := param["transaction"]; ok {
-		if k, err := c.Db.DecodeKey(param["transaction"]); err != nil {
-			return nil, err
-		} else {
-			transaction.SetKey(k)
-		}
 		isUpdate = true
 	}
 
@@ -583,6 +605,14 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 
 	space := m["space"].(deb.Space)
 	if space == nil {
+		if isUpdate {
+			if k, err := c.Db.DecodeKey(param["transaction"]); err != nil {
+				return nil, err
+			} else {
+				transaction.SetKey(k)
+			}
+		}
+		var transactionKey db.Key
 		if k, err := c.Db.Save(transaction, "Transaction", param["coa"], param); err != nil {
 			return nil, err
 		} else {
@@ -604,7 +634,10 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 		err = c.Cache.Delete("transactions_" + coaKey.Encode())
 		transaction.SetKey(transactionKey)
 	} else {
-		err = appendTransactionOnSpace(c, coaKey.Encode(), space, transaction)
+		if isUpdate {
+			DeleteTransaction(c, m, param, userKey)
+		}
+		err = appendTransactionOnSpace(c, coaKey.Encode(), space, transaction, -1)
 	}
 
 	item = transaction
@@ -613,7 +646,7 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 }
 
 func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
-	transaction *Transaction) error {
+	transaction *Transaction, removes int64) error {
 	var accounts []*Account
 	keys, _, err := c.Db.GetAllFromCache("Account", coaKey, &accounts, nil,
 		[]string{"Created"}, c.Cache, "accounts_"+coaKey)
@@ -649,7 +682,7 @@ func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
 	}
 	d := transaction.Date.AddDate(0, 0, -1)
 	dateOffset := SerializedDate(d)
-	metadata := transactionMetadata{transaction.Memo, transaction.Tags, transaction.User, -1}
+	metadata := transactionMetadata{transaction.Memo, transaction.Tags, transaction.User, removes}
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
 	if err := enc.Encode(metadata); err != nil {
@@ -662,26 +695,50 @@ func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
 func DeleteTransaction(c context.Context, m map[string]interface{}, param map[string]string,
 	userKey core.UserKey) (_ interface{}, err error) {
 
-	key, err := c.Db.DecodeKey(param["transaction"])
-	if err != nil {
-		return
-	}
+	space := m["space"].(deb.Space)
 
-	if err = c.Db.Delete(key); err != nil {
-		return
-	}
+	if space == nil {
+		key, err := c.Db.DecodeKey(param["transaction"])
+		if err != nil {
+			return nil, err
+		}
+		if err = c.Db.Delete(key); err != nil {
+			return nil, err
+		}
+		if err = c.Cache.Delete("transactions_asof_" + key.Parent().Encode()); err != nil {
+			return nil, err
+		}
+		if err = c.Cache.Delete("balances_asof_" + key.Parent().Encode()); err != nil {
+			return nil, err
+		}
+		if err = c.Cache.Delete("transactions_" + key.Parent().Encode()); err != nil {
+			return nil, err
+		}
 
-	if err = c.Cache.Delete("transactions_asof_" + key.Parent().Encode()); err != nil {
-		return nil, err
-	}
-	if err = c.Cache.Delete("balances_asof_" + key.Parent().Encode()); err != nil {
-		return nil, err
-	}
-	if err = c.Cache.Delete("transactions_" + key.Parent().Encode()); err != nil {
-		return nil, err
-	}
+		err = nil
+	} else {
+		t, err := GetTransaction(c, m, param, userKey)
+		if err != nil {
+			return nil, err
+		}
+		tx := t.(*Transaction)
+		deb := make([]Entry, len(tx.Credits))
+		cre := make([]Entry, len(tx.Debits))
+		for i, e := range tx.Debits {
+			cre[i] = Entry{Account: e.Account, Value: e.Value}
+		}
+		for i, e := range tx.Credits {
+			deb[i] = Entry{Account: e.Account, Value: e.Value}
+		}
+		tx.Debits = deb
+		tx.Credits = cre
+		var removes int64
+		if removes, err = strconv.ParseInt(param["transaction"], 10, 64); err != nil {
+			return nil, err
+		}
 
-	err = nil
+		appendTransactionOnSpace(c, param["coa"], space, tx, removes)
+	}
 
 	return
 
@@ -705,7 +762,7 @@ func AccountsByCreation(accounts []*Account, keys db.Keys) ([]*Account, db.Keys)
 	return sortedAccounts, sortedKeys
 }
 
-func NewTransactionFromSpace(t *deb.Transaction, keys db.Keys) (*Transaction, error) {
+func NewTransactionFromSpace(t *deb.Transaction, keys db.Keys) (*Transaction, *transactionMetadata, error) {
 	d := time.Date(int(t.Date%100000000/10000), time.Month(t.Date%10000/100), int(t.Date%100),
 		0, 0, 0, 0, time.UTC)
 	m := time.Unix(0, int64(t.Moment))
@@ -713,7 +770,7 @@ func NewTransactionFromSpace(t *deb.Transaction, keys db.Keys) (*Transaction, er
 	dec := gob.NewDecoder(buf)
 	var tm transactionMetadata
 	if err := dec.Decode(&tm); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	deb := []Entry{}
 	cre := []Entry{}
@@ -725,8 +782,48 @@ func NewTransactionFromSpace(t *deb.Transaction, keys db.Keys) (*Transaction, er
 		}
 	}
 	transaction := &Transaction{Date: d, AsOf: m, Debits: deb, Credits: cre,
-		Memo: tm.Memo, Tags: tm.Tags, User: tm.User}
-	return transaction, nil
+		Memo: tm.Memo, Tags: tm.Tags, User: tm.User, Moment: int64(t.Moment)}
+	return transaction, &tm, nil
+}
+
+func TransactionsFromSpace(space deb.Space, accounts []*Account,
+	accountKeys db.Keys) ([]*Transaction, []interface{}, error) {
+	_, sortedKeys := AccountsByCreation(accounts, accountKeys)
+	ch, errc := space.Transactions()
+	transactions := []*Transaction{}
+	var (
+		err error
+		md  *transactionMetadata
+	)
+	for t := range ch {
+		if err != nil {
+			continue
+		}
+		var tx *Transaction
+		tx, md, err = NewTransactionFromSpace(t, sortedKeys)
+		if md.Removes == -1 {
+			transactions = append(transactions, tx)
+		} else {
+			for i, t := range transactions {
+				if t.Moment == md.Removes {
+					transactions = append(transactions[:i], transactions[i+1:]...)
+					break
+				}
+			}
+		}
+	}
+	if err != nil {
+		return nil, nil, err
+	}
+	if err = <-errc; err != nil {
+		return nil, nil, err
+	}
+	sort.Sort(ByDateAndAsOf(transactions))
+	transactionKeys := make([]interface{}, len(transactions))
+	for i, t := range transactions {
+		transactionKeys[i] = fmt.Sprintf("%v", t.Moment)
+	}
+	return transactions, transactionKeys, nil
 }
 
 func SerializedDate(d time.Time) deb.Date {

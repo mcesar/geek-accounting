@@ -188,7 +188,7 @@ func deleteHandler(f writeHandlerFunc) http.HandlerFunc {
 			}
 			m["space"] = space
 		}
-		_, err := f(c, nil, params, userKey)
+		_, err := f(c, m, params, userKey)
 		if err != nil {
 			return badRequest{err}
 		}
