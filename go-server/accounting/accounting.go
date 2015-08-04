@@ -696,13 +696,13 @@ func (a byCreation) Len() int           { return len(a.a) }
 func (a byCreation) Swap(i, j int)      { a.a[i], a.a[j] = a.a[j], a.a[i]; a.k[i], a.k[j] = a.k[j], a.k[i] }
 func (a byCreation) Less(i, j int) bool { return a.a[i].Created.Before(a.a[j].Created) }
 
-func AccountKeysByCreation(accounts []*Account, keys db.Keys) db.Keys {
+func AccountsByCreation(accounts []*Account, keys db.Keys) ([]*Account, db.Keys) {
 	sortedAccounts := make([]*Account, len(accounts))
 	sortedKeys := make(db.Keys, len(keys))
 	copy(sortedAccounts, accounts)
 	copy(sortedKeys, keys)
 	sort.Sort(byCreation{sortedAccounts, sortedKeys})
-	return sortedKeys
+	return sortedAccounts, sortedKeys
 }
 
 func NewTransactionFromSpace(t *deb.Transaction, keys db.Keys) (*Transaction, error) {

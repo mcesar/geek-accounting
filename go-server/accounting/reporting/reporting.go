@@ -23,15 +23,50 @@ func Balance(c context.Context, m map[string]interface{}, param map[string]strin
 	if err != nil {
 		return
 	}
-	b, err := accounting.Balances(c, param["coa"], from, to, map[string]interface{}{"Tags =": "balanceSheet"})
-	if err != nil {
-		return
-	}
 	arr := []db.M{}
-	for _, e := range b {
-		arr = append(arr, db.M{
-			"account": accountToMap(e["account"].(*accounting.Account)),
-			"value":   e["value"]})
+	space := m["space"].(deb.Space)
+	if space == nil {
+		b, err := accounting.Balances(c, param["coa"], from, to,
+			map[string]interface{}{"Tags =": "balanceSheet"})
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range b {
+			account := e["account"].(*accounting.Account)
+			arr = append(arr, db.M{
+				"account": accountToMap(account.Key, account),
+				"value":   e["value"]})
+		}
+	} else {
+		accountKeys, accounts, err := accounting.Accounts(c, param["coa"], nil)
+		if err != nil {
+			return nil, err
+		}
+		sortedAccounts, sortedKeys := accounting.AccountsByCreation(accounts, accountKeys)
+		balanceSpace, err := space.Projection(nil,
+			[]deb.DateRange{deb.DateRange{
+				Start: accounting.SerializedDate(from),
+				End:   accounting.SerializedDate(to)}}, nil)
+		if err != nil {
+			return nil, err
+		}
+		ch, errc := balanceSpace.Transactions()
+		for t := range ch {
+			for k, v := range t.Entries {
+				account := sortedAccounts[k-1]
+				if collections.Contains(account.Tags, "balanceSheet") {
+					value := float64(v) / 100
+					if collections.Contains(account.Tags, "creditBalance") {
+						value = -value
+					}
+					arr = append(arr,
+						db.M{"account": accountToMap(sortedKeys[k-1], account), "value": value})
+				}
+			}
+		}
+		if err = <-errc; err != nil {
+			return nil, err
+		}
 	}
 	result = arr
 	return
@@ -160,7 +195,7 @@ func Ledger(c context.Context, m map[string]interface{}, param map[string]string
 			return nil, err
 		}
 	} else {
-		sortedKeys := accounting.AccountKeysByCreation(accounts, accountKeys)
+		_, sortedKeys := accounting.AccountsByCreation(accounts, accountKeys)
 		var accountIndex deb.Account
 		for i, k := range sortedKeys {
 			if k == account.GetKey() {
@@ -172,6 +207,9 @@ func Ledger(c context.Context, m map[string]interface{}, param map[string]string
 			[]deb.DateRange{deb.DateRange{
 				Start: deb.Date(0),
 				End:   accounting.SerializedDate(from.AddDate(0, 0, -1))}}, nil)
+		if err != nil {
+			return nil, err
+		}
 		ch, errc := balanceSpace.Transactions()
 		for t := range ch {
 			balance = float64(t.Entries[accountIndex]) / 100
@@ -235,7 +273,7 @@ func Ledger(c context.Context, m map[string]interface{}, param map[string]string
 	}
 
 	result = map[string]interface{}{
-		"account": accountToMap(account),
+		"account": accountToMap(account.Key, account),
 		"entries": resultEntries,
 		"balance": balance,
 	}
@@ -254,9 +292,46 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 		return
 	}
 
-	balances, err := accounting.Balances(c, param["coa"], from, to, map[string]interface{}{"Tags =": "incomeStatement"})
-	if err != nil {
-		return
+	space := m["space"].(deb.Space)
+	var balances []db.M
+	if space == nil {
+		balances, err = accounting.Balances(c, param["coa"], from, to,
+			map[string]interface{}{"Tags =": "incomeStatement"})
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		accountKeys, accounts, err := accounting.Accounts(c, param["coa"], nil)
+		if err != nil {
+			return nil, err
+		}
+		sortedAccounts, sortedKeys := accounting.AccountsByCreation(accounts, accountKeys)
+		balanceSpace, err := space.Projection(nil,
+			[]deb.DateRange{deb.DateRange{
+				Start: accounting.SerializedDate(from),
+				End:   accounting.SerializedDate(to)}}, nil)
+		if err != nil {
+			return nil, err
+		}
+		ch, errc := balanceSpace.Transactions()
+		for t := range ch {
+			for k, v := range t.Entries {
+				account := sortedAccounts[k-1]
+				account.Key = sortedKeys[k-1]
+				if collections.Contains(account.Tags, "incomeStatement") {
+					value := float64(v) / 100
+					if collections.Contains(account.Tags, "creditBalance") {
+						value = -value
+					}
+					balances = append(balances,
+						db.M{"account": account, "value": value})
+				}
+			}
+		}
+		if err = <-errc; err != nil {
+			return nil, err
+		}
+
 	}
 
 	type entryType struct {
@@ -287,7 +362,8 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 	)
 
 	addBalance := func(entry *entryType, balance map[string]interface{}) *entryType {
-		if collections.Contains(balance["account"].(*accounting.Account).Tags, "analytic") && balance["value"].(float64) > 0 {
+		if collections.Contains(balance["account"].(*accounting.Account).Tags, "analytic") &&
+			balance["value"].(float64) > 0 {
 			if entry == nil {
 				entry = &entryType{}
 			}
@@ -309,7 +385,8 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 	collectRoots := func(parent db.Key) {
 		for _, m := range balances {
 			account := m["account"].(*accounting.Account)
-			if (account.Parent.IsZero() && parent.IsZero()) || account.Parent.String() == parent.String() {
+			if (account.Parent.IsZero() && parent.IsZero()) ||
+				account.Parent.String() == parent.String() {
 				if collections.Contains(account.Tags, "creditBalance") {
 					revenueRoots = append(revenueRoots, account)
 				} else {
@@ -338,7 +415,8 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 			resultTyped.SalesTax = addBalance(resultTyped.SalesTax, m)
 		} else if collections.Contains(account.Tags, "cost") {
 			resultTyped.Cost = addBalance(resultTyped.Cost, m)
-		} else if collections.Contains(account.Tags, "operating") && isDescendent(account, expenseRoots) {
+		} else if collections.Contains(account.Tags, "operating") &&
+			isDescendent(account, expenseRoots) {
 			resultTyped.OperatingExpense = addBalance(resultTyped.OperatingExpense, m)
 		} else if collections.Contains(account.Tags, "nonOperatingTax") {
 			resultTyped.NonOperatingTax = addBalance(resultTyped.NonOperatingTax, m)
@@ -379,7 +457,8 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 		Balance: z(resultTyped.IncomeBeforeIncomeTax).Balance -
 			z(resultTyped.IncomeTax).Balance - z(resultTyped.Dividends).Balance}
 
-	if resultTyped.NetRevenue.Balance == 0 || (z(resultTyped.Deduction).Balance == 0 && z(resultTyped.SalesTax).Balance == 0) {
+	if resultTyped.NetRevenue.Balance == 0 || (z(resultTyped.Deduction).Balance == 0 &&
+		z(resultTyped.SalesTax).Balance == 0) {
 		resultTyped.NetRevenue = nil
 	}
 	if resultTyped.GrossProfit.Balance == 0 || z(resultTyped.Cost).Balance == 0 {
@@ -388,7 +467,8 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 	if resultTyped.NetOperatingIncome.Balance == 0 {
 		resultTyped.NetOperatingIncome = nil
 	}
-	if resultTyped.IncomeBeforeIncomeTax.Balance == 0 || z(resultTyped.NonOperatingTax).Balance == 0 {
+	if resultTyped.IncomeBeforeIncomeTax.Balance == 0 ||
+		z(resultTyped.NonOperatingTax).Balance == 0 {
 		resultTyped.IncomeBeforeIncomeTax = nil
 	}
 
@@ -397,9 +477,9 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 	return
 }
 
-func accountToMap(account *accounting.Account) map[string]interface{} {
+func accountToMap(key interface{}, account *accounting.Account) map[string]interface{} {
 	return map[string]interface{}{
-		"_id":           account.Key,
+		"_id":           key,
 		"number":        account.Number,
 		"name":          account.Name,
 		"debitBalance":  collections.Contains(account.Tags, "debitBalance"),
@@ -409,7 +489,7 @@ func accountToMap(account *accounting.Account) map[string]interface{} {
 
 func transactionsFromSpace(space deb.Space, accounts []*accounting.Account,
 	accountKeys db.Keys) ([]*accounting.Transaction, []interface{}, error) {
-	sortedKeys := accounting.AccountKeysByCreation(accounts, accountKeys)
+	_, sortedKeys := accounting.AccountsByCreation(accounts, accountKeys)
 	ch, errc := space.Transactions()
 	transactions := []*accounting.Transaction{}
 	var err error
