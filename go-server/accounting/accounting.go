@@ -525,11 +525,10 @@ func AllTransactions(c context.Context, m map[string]interface{}, param map[stri
 
 func GetTransaction(c context.Context, m map[string]interface{}, param map[string]string,
 	_ core.UserKey) (result interface{}, err error) {
-	space_, ok := m["space"]
+	space, ok := m["space"].(deb.Space)
 	if !ok {
 		return c.Db.Get(&Transaction{}, param["transaction"])
 	} else {
-		space := space_.(deb.Space)
 		var moment deb.Moment
 		if key, err := strconv.ParseUint(param["transaction"], 10, 64); err != nil {
 			return nil, err
@@ -604,7 +603,7 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 
 	transaction.updateAccountsKeysAsString()
 
-	space_, ok := m["space"]
+	space, ok := m["space"].(deb.Space)
 	if !ok {
 		if isUpdate {
 			if k, err := c.Db.DecodeKey(param["transaction"]); err != nil {
@@ -635,7 +634,6 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 		err = c.Cache.Delete("transactions_" + coaKey.Encode())
 		transaction.SetKey(transactionKey)
 	} else {
-		space := space_.(deb.Space)
 		if isUpdate {
 			DeleteTransaction(c, m, param, userKey)
 		}
@@ -697,7 +695,7 @@ func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
 func DeleteTransaction(c context.Context, m map[string]interface{}, param map[string]string,
 	userKey core.UserKey) (_ interface{}, err error) {
 
-	space_, ok := m["space"]
+	space, ok := m["space"].(deb.Space)
 	if !ok {
 		key, err := c.Db.DecodeKey(param["transaction"])
 		if err != nil {
@@ -718,7 +716,6 @@ func DeleteTransaction(c context.Context, m map[string]interface{}, param map[st
 
 		err = nil
 	} else {
-		space := space_.(deb.Space)
 		t, err := GetTransaction(c, m, param, userKey)
 		if err != nil {
 			return nil, err

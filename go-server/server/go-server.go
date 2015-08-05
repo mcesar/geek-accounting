@@ -260,6 +260,9 @@ func space(c context.Context, ctx appengine.Context, coaKey string) (deb.Space, 
 	}
 	for i, coa := range coas {
 		if keys[i].Encode() == coaKey {
+			if coa.Space.IsZero() {
+				return nil, nil
+			}
 			k, err := datastore.DecodeKey(coa.Space.Encode())
 			if err != nil {
 				return nil, err

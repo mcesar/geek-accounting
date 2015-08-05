@@ -23,7 +23,7 @@ func Balance(c context.Context, m map[string]interface{}, param map[string]strin
 		return
 	}
 	arr := []db.M{}
-	space_, ok := m["space"]
+	space, ok := m["space"].(deb.Space)
 	if !ok {
 		b, err := accounting.Balances(c, param["coa"], from, to,
 			map[string]interface{}{"Tags =": "balanceSheet"})
@@ -37,7 +37,6 @@ func Balance(c context.Context, m map[string]interface{}, param map[string]strin
 				"value":   e["value"]})
 		}
 	} else {
-		space := space_.(deb.Space)
 		accountKeys, accounts, err := accounting.Accounts(c, param["coa"], nil)
 		if err != nil {
 			return nil, err
@@ -89,7 +88,7 @@ func Journal(c context.Context, m map[string]interface{}, param map[string]strin
 		return
 	}
 
-	space_, ok := m["space"]
+	space, ok := m["space"].(deb.Space)
 
 	var transactions []*accounting.Transaction
 	var transactionKeys []interface{}
@@ -105,7 +104,6 @@ func Journal(c context.Context, m map[string]interface{}, param map[string]strin
 			transactionKeys[i] = k
 		}
 	} else {
-		space := space_.(deb.Space)
 		journal, err := space.Slice(nil,
 			[]deb.DateRange{deb.DateRange{Start: accounting.SerializedDate(from),
 				End: accounting.SerializedDate(to)}}, nil)
@@ -189,7 +187,7 @@ func Ledger(c context.Context, m map[string]interface{}, param map[string]string
 
 	var transactions []*accounting.TransactionWithValue
 	var balance float64
-	space_, ok := m["space"]
+	space, ok := m["space"].(deb.Space)
 	if !ok {
 		transactions, balance, err =
 			accounting.TransactionsWithValue(c, param["coa"], account, from, to)
@@ -197,7 +195,6 @@ func Ledger(c context.Context, m map[string]interface{}, param map[string]string
 			return nil, err
 		}
 	} else {
-		space := space_.(deb.Space)
 		_, sortedKeys := accounting.AccountsByCreation(accounts, accountKeys)
 		var accountIndex deb.Account
 		for i, k := range sortedKeys {
@@ -296,7 +293,7 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 		return
 	}
 
-	space_, ok := m["space"]
+	space, ok := m["space"].(deb.Space)
 	var balances []db.M
 	if !ok {
 		balances, err = accounting.Balances(c, param["coa"], from, to,
@@ -305,7 +302,6 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 			return nil, err
 		}
 	} else {
-		space := space_.(deb.Space)
 		accountKeys, accounts, err := accounting.Accounts(c, param["coa"], nil)
 		if err != nil {
 			return nil, err
