@@ -24,6 +24,7 @@ import (
 
 	"appengine"
 	"appengine/datastore"
+	"appengine/taskqueue"
 )
 
 const PathPrefix = "/charts-of-accounts"
@@ -67,6 +68,12 @@ func init() {
 		getAllHandler(reporting.Ledger)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/income-statement",
 		getAllHandler(reporting.IncomeStatement)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/migration",
+		postHandler2(coaMigrationHandler, true)).Methods("POST")
+	r.HandleFunc(PathPrefix+"/{coa}/migration/to/{coa2}",
+		postHandler2(coaMigrationHandler, true)).Methods("POST")
+	r.HandleFunc(PathPrefix+"/{coa}/migration_enqueue",
+		postHandler2(coaMigrationEnqueueHandler, true)).Methods("POST")
 	r.HandleFunc("/_ah/warmup", func(w http.ResponseWriter, r *http.Request) {
 		ac := appengine.NewContext(r)
 		c := newContext(ac)
@@ -110,6 +117,72 @@ func coaPostHandler(c context.Context, m map[string]interface{}, p map[string]st
 	return accounting.SaveChartOfAccounts(c, m, p, u)
 }
 
+func coaMigrationEnqueueHandler(c context.Context, m map[string]interface{}, p map[string]string,
+	u core.UserKey) (interface{}, error) {
+	ctx := m["_appengine_context"].(appengine.Context)
+	t := taskqueue.NewPOSTTask(fmt.Sprintf("/charts-of-accounts/%v/migration", p["coa"]), nil)
+	t.Header.Add("Authorization", "Basic bWNlc2FyOmtpbGx0aGVtYWxs")
+	t.Header.Set("Content-Type", "application/json")
+	t.Payload = []byte("{}")
+	if _, err := taskqueue.Add(ctx, t, ""); err != nil {
+		return nil, err
+	}
+	return "ok", nil
+}
+
+func coaMigrationHandler(c context.Context, m map[string]interface{}, p map[string]string,
+	u core.UserKey) (interface{}, error) {
+	ctx := m["_appengine_context"].(appengine.Context)
+	var coa, coa2 *accounting.ChartOfAccounts
+	if coa2Key, ok := p["coa2"]; ok {
+		var (
+			s   deb.Space
+			err error
+		)
+		s, coa2, err = space(c, ctx, coa2Key)
+		if err != nil {
+			return nil, err
+		}
+		m["space"] = s
+	} else if coaKey, ok := p["coa"]; ok {
+		var (
+			s   deb.Space
+			err error
+		)
+		s, coa, err = space(c, ctx, coaKey)
+		if err != nil {
+			return nil, err
+		}
+		m["space"] = s
+	}
+	if m["space"] == nil || coa2 != nil {
+		var (
+			key *datastore.Key
+			err error
+		)
+		if coa2 == nil {
+			_ /*space*/, key, err = deb.NewDatastoreSpace(ctx, nil)
+		} else {
+			key = coa2.Space.DsKey
+		}
+		if err != nil {
+			return nil, err
+		}
+		s := deb.LargeSpaceBuilder(0).NewSpaceWithOffset(nil, 0, 0, nil)
+		if result, err := accounting.Migrate(c, coa, p["coa"], p["coa2"], s, /*space*/
+			db.CKey{key}, u); err != nil {
+			return nil, err
+		} else {
+			if err = deb.CopySpaceToDatastore(ctx, key, s); err != nil {
+				return nil, err
+			}
+			return result, nil
+		}
+	} else {
+		return "Already migrated", nil
+	}
+}
+
 func getAllHandler(f readHandlerFunc) http.HandlerFunc {
 	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error {
 		params := mux.Vars(r)
@@ -120,7 +193,7 @@ func getAllHandler(f readHandlerFunc) http.HandlerFunc {
 		c := newContext(ctx)
 		m := map[string]interface{}{}
 		if coaKey, ok := params["coa"]; ok {
-			space, err := space(c, ctx, coaKey)
+			space, _, err := space(c, ctx, coaKey)
 			if err != nil {
 				return err
 			}
@@ -158,7 +231,7 @@ func postHandler2(f writeHandlerFunc, includeContextInMap bool) http.HandlerFunc
 		}
 		params := mux.Vars(r)
 		if coaKey, ok := params["coa"]; ok {
-			space, err := space(c, ctx, coaKey)
+			space, _, err := space(c, ctx, coaKey)
 			if err != nil {
 				return err
 			}
@@ -182,7 +255,7 @@ func deleteHandler(f writeHandlerFunc) http.HandlerFunc {
 		ctx := appengine.NewContext(r)
 		c := newContext(ctx)
 		if coaKey, ok := params["coa"]; ok {
-			space, err := space(c, ctx, coaKey)
+			space, _, err := space(c, ctx, coaKey)
 			if err != nil {
 				return err
 			}
@@ -221,7 +294,8 @@ func errorHandler(
 			return
 		}
 		arr := strings.Split(string(b), ":")
-		c := newContext(appengine.NewContext(r))
+		ctx := appengine.NewContext(r)
+		c := newContext(ctx)
 		err, ok, userKey := core.Login(c, arr[0], arr[1])
 		if err != nil {
 			http.Error(w, "Internal error(2):"+err.Error(), http.StatusInternalServerError)
@@ -237,6 +311,7 @@ func errorHandler(
 		}
 		switch err.(type) {
 		case badRequest:
+			ctx.Infof(err.Error())
 			http.Error(w, "Error: "+err.Error(), http.StatusBadRequest)
 		case notFound:
 			http.Error(w, "Error: item not found", http.StatusNotFound)
@@ -251,28 +326,29 @@ func newContext(ac appengine.Context) context.Context {
 	return context.Context{Db: db.NewAppengineDb(ac), Cache: cache.NewAppengineCache(ac)}
 }
 
-func space(c context.Context, ctx appengine.Context, coaKey string) (deb.Space, error) {
+func space(c context.Context, ctx appengine.Context, coaKey string) (deb.Space,
+	*accounting.ChartOfAccounts, error) {
 	var coas []*accounting.ChartOfAccounts
 	keys, _, err := c.Db.GetAllFromCache("ChartOfAccounts", "", &coas, nil, nil, c.Cache,
 		"ChartOfAccounts")
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for i, coa := range coas {
 		if keys[i].Encode() == coaKey {
 			if coa.Space.IsZero() {
-				return nil, nil
+				return nil, coa, nil
 			}
 			k, err := datastore.DecodeKey(coa.Space.Encode())
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
 			s, _, err := deb.NewDatastoreSpace(ctx, k)
 			if err != nil {
-				return nil, err
+				return nil, nil, err
 			}
-			return s, nil
+			return s, coa, nil
 		}
 	}
-	return nil, fmt.Errorf("Chart of accounts not found")
+	return nil, nil, fmt.Errorf("Chart of accounts not found")
 }

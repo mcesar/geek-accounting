@@ -3,16 +3,19 @@
 package db
 
 import (
-	"appengine"
-	"appengine/datastore"
 	"errors"
 	"fmt"
-	"github.com/mcesarhm/geek-accounting/go-server/cache"
-	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
 	"reflect"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/mcesarhm/geek-accounting/go-server/cache"
+	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
+
+	"appengine"
+	"appengine/datastore"
 )
 
 type appengineDb struct{ c appengine.Context }
@@ -66,6 +69,7 @@ func (db appengineDb) Get(item interface{}, keyAsString string) (result interfac
 	}
 	err = datastore.Get(db.c, key, item)
 	if err != nil {
+		logStackTrace(db.c, err)
 		return
 	}
 	identifier := item.(Identifier)
@@ -107,15 +111,19 @@ func (db appengineDb) GetAllWithLimit(kind string, ancestor string, items interf
 		q = q.Limit(limit)
 	}
 	keys, err := q.GetAll(db.c, items)
-	if items != nil {
-		v := reflect.ValueOf(items).Elem()
-		for i := 0; i < v.Len(); i++ {
-			ptr := v.Index(i)
-			if ptr.Kind() != reflect.Ptr {
-				ptr = ptr.Addr()
+	if err != nil {
+		logStackTrace(db.c, err)
+	} else {
+		if items != nil {
+			v := reflect.ValueOf(items).Elem()
+			for i := 0; i < v.Len(); i++ {
+				ptr := v.Index(i)
+				if ptr.Kind() != reflect.Ptr {
+					ptr = ptr.Addr()
+				}
+				identifier := ptr.Interface().(Identifier)
+				identifier.SetKey(CKey{keys[i]})
 			}
-			identifier := ptr.Interface().(Identifier)
-			identifier.SetKey(CKey{keys[i]})
 		}
 	}
 	return toKeys(keys), items, err
@@ -135,6 +143,7 @@ func (db appengineDb) GetAllFromCache(kind string, ancestor string, items interf
 		}
 		var keys []*datastore.Key
 		if keys, err = q.GetAll(db.c, items); err != nil {
+			logStackTrace(db.c, err)
 			return nil, nil, err
 		}
 		itemsValue := reflect.Indirect(reflect.ValueOf(items))
@@ -198,6 +207,7 @@ func (db appengineDb) GetAllFromCache(kind string, ancestor string, items interf
 			break
 		}
 		if err := c.Get(arr[2].(string), arr); err != nil {
+			logStackTrace(db.c, err)
 			return nil, nil, err
 		}
 	}
@@ -271,4 +281,10 @@ func toKeys(dsKeys []*datastore.Key) Keys {
 		result = result.Append(CKey{k})
 	}
 	return result
+}
+
+func logStackTrace(c appengine.Context, err error) {
+	var stack [4096]byte
+	runtime.Stack(stack[:], false)
+	c.Errorf("%q\n%s\n", err, stack[:])
 }

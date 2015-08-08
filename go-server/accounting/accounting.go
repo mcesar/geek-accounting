@@ -100,7 +100,8 @@ func (account *Account) ValidationMessage(db db.Db, param map[string]string) str
 		return err.Error()
 	}
 	if account.Key.IsZero() {
-		if key, err := accountKeyWithNumber(db, account.Number, param["coa"]); err != nil {
+		if key, err := accountKeyWithNumber(db, context.Context{nil, nil}, account.Number,
+			param["coa"]); err != nil {
 			return err.Error()
 		} else if !key.IsZero() {
 			return "An account with this number already exists"
@@ -428,15 +429,20 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 		}
 
 		if !account.Parent.IsZero() && !isUpdate {
+			changed := false
 			i := collections.IndexOf(parent.Tags, "analytic")
 			if i != -1 {
 				parent.Tags = append(parent.Tags[:i], parent.Tags[i+1:]...)
+				changed = true
 			}
 			if !collections.Contains(parent.Tags, "synthetic") {
 				parent.Tags = append(parent.Tags, "synthetic")
+				changed = true
 			}
-			if _, err = c.Db.Save(parent, "Account", param["coa"], param); err != nil {
-				return
+			if changed {
+				if _, err = c.Db.Save(parent, "Account", param["coa"], param); err != nil {
+					return
+				}
 			}
 		}
 		return
@@ -576,7 +582,17 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 		result = make([]Entry, len(entriesMapArray))
 		for i := 0; i < len(entriesMapArray); i++ {
 			entryMap := entriesMapArray[i].(map[string]interface{})
-			if key, err := accountKeyWithNumber(c.Db, entryMap["account"].(string), param["coa"]); err != nil {
+			var (
+				key db.Key
+				err error
+			)
+			if am, ok := m["accounts_map"]; ok {
+				key = am.(map[string]db.Key)[entryMap["account"].(string)]
+			} else {
+				key, err = accountKeyWithNumber(nil, c, entryMap["account"].(string),
+					param["coa"])
+			}
+			if err != nil {
 				return nil, err
 			} else if key.IsZero() {
 				return nil, fmt.Errorf("Account '%v' not found", entryMap["account"])
@@ -637,7 +653,10 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 		if isUpdate {
 			DeleteTransaction(c, m, param, userKey)
 		}
-		err = appendTransactionOnSpace(c, coaKey.Encode(), space, transaction, -1)
+		accounts, _ := m["accounts_sorted_by_creation"].([]*Account)
+		accountsKeys, _ := m["accounts_keys_sorted_by_creation"].(db.Keys)
+		err = appendTransactionOnSpace(c, coaKey.Encode(), space, transaction, -1,
+			accounts, accountsKeys)
 	}
 
 	item = transaction
@@ -646,17 +665,18 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 }
 
 func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
-	transaction *Transaction, removes int64) error {
-	var accounts []*Account
-	keys, _, err := c.Db.GetAllFromCache("Account", coaKey, &accounts, nil,
-		[]string{"Created"}, c.Cache, "accounts_"+coaKey)
-	if err != nil {
-		return err
+	transaction *Transaction, removes int64, accounts []*Account, accountKeys db.Keys) error {
+	if accounts == nil {
+		var err error
+		accountKeys, accounts, err = accountsSortedByCreation(c, coaKey)
+		if err != nil {
+			return err
+		}
 	}
 	values := make([]int64, len(accounts))
 	for _, e := range transaction.Debits {
 		found := false
-		for i, k := range keys {
+		for i, k := range accountKeys {
 			if k.Encode() == e.Account.Encode() {
 				values[i] = int64(e.Value * 100)
 				found = true
@@ -669,7 +689,7 @@ func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
 	}
 	for _, e := range transaction.Credits {
 		found := false
-		for i, k := range keys {
+		for i, k := range accountKeys {
 			if k.Encode() == e.Account.Encode() {
 				values[i] = -int64(e.Value * 100)
 				found = true
@@ -690,6 +710,16 @@ func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
 	}
 	return space.Append(deb.NewSmallSpaceWithOffset(deb.Array{{values}}.Transposed(),
 		uint64(dateOffset), uint64(transaction.AsOf.UnixNano()), [][][]byte{{buf.Bytes()}}))
+}
+
+func accountsSortedByCreation(c context.Context, coaKey string) (db.Keys, []*Account, error) {
+	var accounts []*Account
+	keys, _, err := c.Db.GetAllFromCache("Account", coaKey, &accounts, nil,
+		[]string{"Created"}, c.Cache, "accounts_"+coaKey)
+	if err != nil {
+		return nil, nil, err
+	}
+	return keys, accounts, nil
 }
 
 func DeleteTransaction(c context.Context, m map[string]interface{}, param map[string]string,
@@ -736,7 +766,7 @@ func DeleteTransaction(c context.Context, m map[string]interface{}, param map[st
 			return nil, err
 		}
 
-		appendTransactionOnSpace(c, param["coa"], space, tx, removes)
+		appendTransactionOnSpace(c, param["coa"], space, tx, removes, nil, nil)
 	}
 
 	return
@@ -1040,13 +1070,133 @@ func Balances(c context.Context, coaKey string, from, to time.Time, accountFilte
 	return result, nil
 }
 
-func accountKeyWithNumber(d db.Db, number, coa string) (db.Key, error) {
-	if keys, _, err := d.GetAll("Account", coa, nil, db.M{"Number = ": number, "Removed = ": false},
-		nil); err != nil {
+func accountKeyWithNumber(d db.Db, c context.Context, number, coa string) (db.Key, error) {
+	var (
+		keys db.Keys
+		err  error
+	)
+	if d != nil {
+		keys, _, err = d.GetAll("Account", coa, nil,
+			db.M{"Number = ": number, "Removed = ": false}, nil)
+	} else {
+		keys, _, err = Accounts(c, coa, db.M{"Number = ": number, "Removed = ": false})
+	}
+	if err != nil {
 		return d.NewKey(), err
 	} else if keys.Len() == 0 {
 		return d.NewKey(), nil
 	} else {
 		return keys.KeyAt(0), nil
 	}
+}
+
+func Migrate(c context.Context, coa *ChartOfAccounts, coaKey, coa2Key string, space deb.Space,
+	key db.Key, userKey core.UserKey) (interface{}, error) {
+
+	var (
+		coa2     *ChartOfAccounts
+		accounts *[]*Account
+	)
+
+	am := map[string]*Account{}
+	am2 := map[string]db.Key{}
+	param := map[string]string{}
+
+	if ak, aa, err := c.Db.GetAll("Account", coaKey, &[]*Account{}, nil,
+		[]string{"Number"}); err != nil {
+		return nil, err
+	} else {
+		accounts = aa.(*[]*Account)
+		for i, a := range *accounts {
+			am[ak[i].Encode()] = a
+		}
+	}
+
+	if coa2Key == "" {
+		coa2 = &ChartOfAccounts{
+			Name:  coa.Name + "/2",
+			Space: key.(db.CKey),
+			User:  userKey,
+			AsOf:  time.Now()}
+
+		_, err := c.Db.Save(coa2, "ChartOfAccounts", "", nil)
+		if err != nil {
+			return nil, err
+		}
+		err = c.Cache.Delete("ChartOfAccounts")
+		param["coa"] = coa2.Key.Encode()
+		for _, a := range *accounts {
+			if a.Removed {
+				continue
+			}
+			m := map[string]interface{}{}
+			m["name"] = a.Name
+			m["number"] = a.Number
+			if !a.Parent.IsZero() {
+				m["parent"] = am[a.Parent.Encode()].Number
+			}
+			if a.Tags != nil {
+				for _, t := range a.Tags {
+					m[t] = true
+				}
+			}
+			if account, err := SaveAccount(c, m, param, userKey); err != nil {
+				return nil, err
+			} else {
+				am2[a.Number] = account.(*Account).GetKey()
+			}
+		}
+	} else {
+		param["coa"] = coa2Key
+		coa2 = &ChartOfAccounts{}
+		if _, err := c.Db.Get(coa2, coa2Key); err != nil {
+			return nil, err
+		}
+		ak2, aa2, err := c.Db.GetAll("Account", coa2Key, &[]*Account{}, nil, []string{"Number"})
+		if err != nil {
+			return nil, err
+		}
+		accounts2 := aa2.(*[]*Account)
+		for i, a := range *accounts2 {
+			am2[a.Number] = ak2[i]
+		}
+	}
+	_, tt, err := c.Db.GetAll("Transaction", coaKey, &[]*Transaction{}, nil, []string{"AsOf"})
+	if err != nil {
+		return nil, err
+	}
+	transactions := tt.(*[]*Transaction)
+	accountsSortedKeys, accountsSorted, err := accountsSortedByCreation(c, coa2Key)
+	if err != nil {
+		return nil, err
+	}
+	for _, t := range *transactions {
+		m := map[string]interface{}{}
+		debits := make([]interface{}, len(t.Debits))
+		credits := make([]interface{}, len(t.Credits))
+		for i, e := range t.Debits {
+			m := map[string]interface{}{}
+			m["account"] = am[e.Account.Encode()].Number
+			m["value"] = e.Value
+			debits[i] = m
+		}
+		for i, e := range t.Credits {
+			m := map[string]interface{}{}
+			m["account"] = am[e.Account.Encode()].Number
+			m["value"] = e.Value
+			credits[i] = m
+		}
+		m["memo"] = t.Memo
+		m["date"] = t.Date.Format(time.RFC3339)
+		m["debits"] = debits
+		m["credits"] = credits
+		m["space"] = space
+		m["accounts_map"] = am2
+		m["accounts_sorted_by_creation"] = accountsSorted
+		m["accounts_keys_sorted_by_creation"] = accountsSortedKeys
+		if _, err := SaveTransaction(c, m, param, userKey); err != nil {
+			return nil, err
+		}
+	}
+	return fmt.Sprintf("Migrated to %v. %v accounts", coa2.Name, len(*accounts)), nil
 }
