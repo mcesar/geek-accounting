@@ -700,8 +700,7 @@ func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
 			return fmt.Errorf("Account %v not found", e.Account.Encode())
 		}
 	}
-	d := transaction.Date.AddDate(0, 0, -1)
-	dateOffset := SerializedDate(d)
+	dateOffset := SerializedDate(transaction.Date) - 1
 	metadata := transactionMetadata{transaction.Memo, transaction.Tags, transaction.User, removes}
 	var buf bytes.Buffer
 	enc := gob.NewEncoder(&buf)
