@@ -8,9 +8,8 @@ import (
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"github.com/mcesarhm/geek-accounting/go-server/extensions/collections"
-	"mcesar.io/deb"
-	//"log"
 	"math"
+	"mcesar.io/deb"
 	"sort"
 	"strings"
 	"time"
@@ -48,11 +47,6 @@ func Balance(c context.Context, m map[string]interface{}, param map[string]strin
 				"value":   e["value"]})
 		}
 	} else {
-		accountKeys, accounts, err := accounting.Accounts(c, param["coa"], nil)
-		if err != nil {
-			return nil, err
-		}
-		sortedAccounts, sortedKeys := accounting.AccountsByCreation(accounts, accountKeys)
 		balanceSpace, err := space.Projection(nil,
 			[]deb.DateRange{deb.DateRange{
 				Start: accounting.SerializedDate(from),
@@ -60,7 +54,14 @@ func Balance(c context.Context, m map[string]interface{}, param map[string]strin
 		if err != nil {
 			return nil, err
 		}
+		accountKeys, accounts, err := accounting.Accounts(c, param["coa"], nil)
+		if err != nil {
+			return nil, err
+		}
+		sortedAccounts, sortedKeys := accounting.AccountsByCreation(accounts, accountKeys)
 		ch, errc := balanceSpace.Transactions()
+		accountsInserted := map[string]int{}
+		toBeProcessed := map[string]*accounting.Account{}
 		for t := range ch {
 			for k, v := range t.Entries {
 				account := sortedAccounts[k-1]
@@ -69,6 +70,10 @@ func Balance(c context.Context, m map[string]interface{}, param map[string]strin
 					if collections.Contains(account.Tags, "creditBalance") {
 						value = -value
 					}
+					accountsInserted[sortedKeys[k-1].Encode()] = len(arr)
+					if collections.Contains(account.Tags, "analytic") {
+						toBeProcessed[sortedKeys[k-1].Encode()] = account
+					}
 					arr = append(arr,
 						db.M{"account": accountToMap(sortedKeys[k-1], account), "value": value})
 				}
@@ -76,6 +81,28 @@ func Balance(c context.Context, m map[string]interface{}, param map[string]strin
 		}
 		if err = <-errc; err != nil {
 			return nil, err
+		}
+		for i, k := range sortedKeys {
+			if _, ok := accountsInserted[k.Encode()]; !ok &&
+				collections.Contains(sortedAccounts[i].Tags, "balanceSheet") {
+				accountsInserted[k.Encode()] = len(arr)
+				arr = append(arr,
+					db.M{"account": accountToMap(k, sortedAccounts[i]), "value": float64(0)})
+			}
+		}
+		for k, v := range toBeProcessed {
+			p := v.Parent
+			for !p.IsZero() {
+				idx := accountsInserted[p.Encode()]
+				arr[idx]["value"] = arr[idx]["value"].(float64) +
+					arr[accountsInserted[k]]["value"].(float64)
+				for i, a := range sortedAccounts {
+					if sortedKeys[i].Encode() == p.Encode() {
+						p = a.Parent
+						break
+					}
+				}
+			}
 		}
 		sort.Sort(byNumber(arr))
 	}
@@ -250,7 +277,8 @@ func Ledger(c context.Context, m map[string]interface{}, param map[string]string
 
 	resultEntries := []interface{}{}
 	runningBalance := balance
-	addEntries := func(t *accounting.TransactionWithValue, entries []accounting.Entry, counterpartEntries []accounting.Entry, kind string) {
+	addEntries := func(t *accounting.TransactionWithValue, entries []accounting.Entry,
+		counterpartEntries []accounting.Entry, kind string) {
 		found := false
 		for _, e := range entries {
 			if e.Account.String() == account.Key.String() {
