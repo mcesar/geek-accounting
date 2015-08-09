@@ -11,9 +11,20 @@ import (
 	"mcesar.io/deb"
 	//"log"
 	"math"
+	"sort"
 	"strings"
 	"time"
 )
+
+type byNumber []db.M
+
+func (arr byNumber) Len() int      { return len(arr) }
+func (arr byNumber) Swap(i, j int) { arr[i], arr[j] = arr[j], arr[i] }
+func (arr byNumber) Less(i, j int) bool {
+	a1 := arr[i]["account"].(map[string]interface{})
+	a2 := arr[j]["account"].(map[string]interface{})
+	return a1["number"].(string) < a2["number"].(string)
+}
 
 func Balance(c context.Context, m map[string]interface{}, param map[string]string,
 	_ core.UserKey) (result interface{}, err error) {
@@ -66,6 +77,7 @@ func Balance(c context.Context, m map[string]interface{}, param map[string]strin
 		if err = <-errc; err != nil {
 			return nil, err
 		}
+		sort.Sort(byNumber(arr))
 	}
 	result = arr
 	return
@@ -221,8 +233,9 @@ func Ledger(c context.Context, m map[string]interface{}, param map[string]string
 			balance = -balance
 		}
 		ledger, err := space.Slice([]deb.Account{accountIndex},
-			[]deb.DateRange{deb.DateRange{Start: accounting.SerializedDate(from),
-				End: accounting.SerializedDate(to)}}, nil)
+			[]deb.DateRange{deb.DateRange{
+				Start: accounting.SerializedDate(from),
+				End:   accounting.SerializedDate(to)}}, nil)
 		if err != nil {
 			return nil, err
 		}

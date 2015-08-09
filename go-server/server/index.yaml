@@ -59,3 +59,8 @@ indexes:
   ancestor: yes
   properties:
   - name: User
+
+- kind: data_block
+  properties:
+  - name: __key__
+  - name: AsOf

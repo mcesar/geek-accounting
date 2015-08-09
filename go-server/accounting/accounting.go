@@ -678,7 +678,7 @@ func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
 		found := false
 		for i, k := range accountKeys {
 			if k.Encode() == e.Account.Encode() {
-				values[i] = int64(e.Value * 100)
+				values[i] = int64(xmath.Round(e.Value * 100))
 				found = true
 				break
 			}
@@ -691,7 +691,7 @@ func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
 		found := false
 		for i, k := range accountKeys {
 			if k.Encode() == e.Account.Encode() {
-				values[i] = -int64(e.Value * 100)
+				values[i] = -int64(xmath.Round(e.Value * 100))
 				found = true
 				break
 			}
