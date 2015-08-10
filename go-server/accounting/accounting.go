@@ -12,7 +12,6 @@ import (
 	"github.com/mcesarhm/geek-accounting/go-server/extensions/collections"
 	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
 
-	//"log"
 	"sort"
 	"strings"
 	"time"

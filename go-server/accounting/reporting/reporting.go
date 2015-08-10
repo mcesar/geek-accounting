@@ -3,20 +3,29 @@ package reporting
 import (
 	"fmt"
 
+	"math"
+	"sort"
+	"strings"
+	"time"
+
 	"github.com/mcesarhm/geek-accounting/go-server/accounting"
 	"github.com/mcesarhm/geek-accounting/go-server/context"
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"github.com/mcesarhm/geek-accounting/go-server/extensions/collections"
-	"math"
 	"mcesar.io/deb"
-	"sort"
-	"strings"
-	"time"
 )
 
-type byNumber []db.M
+type sorter struct {
+	arr  []db.M
+	less func(db.M, db.M) bool
+}
 
+func (s sorter) Len() int           { return len(s.arr) }
+func (s sorter) Swap(i, j int)      { s.arr[i], s.arr[j] = s.arr[j], s.arr[i] }
+func (s sorter) Less(i, j int) bool { return s.less(s.arr[i], s.arr[j]) }
+
+/*
 func (arr byNumber) Len() int      { return len(arr) }
 func (arr byNumber) Swap(i, j int) { arr[i], arr[j] = arr[j], arr[i] }
 func (arr byNumber) Less(i, j int) bool {
@@ -24,7 +33,7 @@ func (arr byNumber) Less(i, j int) bool {
 	a2 := arr[j]["account"].(map[string]interface{})
 	return a1["number"].(string) < a2["number"].(string)
 }
-
+*/
 func Balance(c context.Context, m map[string]interface{}, param map[string]string,
 	_ core.UserKey) (result interface{}, err error) {
 	from := time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -104,7 +113,12 @@ func Balance(c context.Context, m map[string]interface{}, param map[string]strin
 				}
 			}
 		}
-		sort.Sort(byNumber(arr))
+		less := func(m1, m2 db.M) bool {
+			a1 := m1["account"].(map[string]interface{})
+			a2 := m2["account"].(map[string]interface{})
+			return a1["number"].(string) < a2["number"].(string)
+		}
+		sort.Sort(sorter{arr, less})
 	}
 	result = arr
 	return
@@ -334,6 +348,25 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 		return
 	}
 
+	var (
+		revenueRoots, expenseRoots []*accounting.Account
+		collectRoots               func(db.Key)
+	)
+
+	collectRoots_ := func(top db.Key, c chan *accounting.Account) {
+		for account := range c {
+			if collections.Contains(account.Tags, "incomeStatement") &&
+				(account.Parent.IsZero() && top.IsZero() ||
+					account.Parent.String() == top.String()) {
+				if collections.Contains(account.Tags, "creditBalance") {
+					revenueRoots = append(revenueRoots, account)
+				} else {
+					expenseRoots = append(expenseRoots, account)
+				}
+			}
+		}
+	}
+
 	space, ok := m["space"].(deb.Space)
 	var balances []db.M
 	if !ok {
@@ -342,12 +375,17 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 		if err != nil {
 			return nil, err
 		}
-	} else {
-		accountKeys, accounts, err := accounting.Accounts(c, param["coa"], nil)
-		if err != nil {
-			return nil, err
+		collectRoots = func(top db.Key) {
+			c := make(chan *accounting.Account)
+			go func() {
+				for _, m := range balances {
+					c <- m["account"].(*accounting.Account)
+				}
+				close(c)
+			}()
+			collectRoots_(top, c)
 		}
-		sortedAccounts, sortedKeys := accounting.AccountsByCreation(accounts, accountKeys)
+	} else {
 		balanceSpace, err := space.Projection(nil,
 			[]deb.DateRange{deb.DateRange{
 				Start: accounting.SerializedDate(from),
@@ -355,6 +393,11 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 		if err != nil {
 			return nil, err
 		}
+		accountKeys, accounts, err := accounting.Accounts(c, param["coa"], nil)
+		if err != nil {
+			return nil, err
+		}
+		sortedAccounts, sortedKeys := accounting.AccountsByCreation(accounts, accountKeys)
 		ch, errc := balanceSpace.Transactions()
 		for t := range ch {
 			for k, v := range t.Entries {
@@ -372,7 +415,23 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 		if err = <-errc; err != nil {
 			return nil, err
 		}
-
+		less := func(m1, m2 db.M) bool {
+			a1 := m1["account"].(*accounting.Account)
+			a2 := m2["account"].(*accounting.Account)
+			return a1.Number < a2.Number
+		}
+		sort.Sort(sorter{balances, less})
+		collectRoots = func(top db.Key) {
+			c := make(chan *accounting.Account)
+			go func() {
+				for i, m := range accounts {
+					m.SetKey(accountKeys[i])
+					c <- m
+				}
+				close(c)
+			}()
+			collectRoots_(top, c)
+		}
 	}
 
 	type entryType struct {
@@ -397,10 +456,7 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 		NetIncome             *entryType `json:"netIncome"`
 	}
 
-	var (
-		resultTyped                resultType
-		revenueRoots, expenseRoots []*accounting.Account
-	)
+	var resultTyped resultType
 
 	addBalance := func(entry *entryType, balance map[string]interface{}) *entryType {
 		if collections.Contains(balance["account"].(*accounting.Account).Tags, "analytic") &&
@@ -421,20 +477,6 @@ func IncomeStatement(c context.Context, m map[string]interface{}, param map[stri
 			}
 		}
 		return false
-	}
-
-	collectRoots := func(parent db.Key) {
-		for _, m := range balances {
-			account := m["account"].(*accounting.Account)
-			if (account.Parent.IsZero() && parent.IsZero()) ||
-				account.Parent.String() == parent.String() {
-				if collections.Contains(account.Tags, "creditBalance") {
-					revenueRoots = append(revenueRoots, account)
-				} else {
-					expenseRoots = append(expenseRoots, account)
-				}
-			}
-		}
 	}
 
 	collectRoots(c.Db.NewKey())

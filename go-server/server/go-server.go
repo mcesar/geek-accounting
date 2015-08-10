@@ -161,7 +161,7 @@ func coaMigrationHandler(c context.Context, m map[string]interface{}, p map[stri
 			err error
 		)
 		if coa2 == nil {
-			_ /*space*/, key, err = deb.NewDatastoreSpace(ctx, nil)
+			_, key, err = deb.NewDatastoreSpace(ctx, nil)
 		} else {
 			key = coa2.Space.DsKey
 		}
@@ -169,7 +169,7 @@ func coaMigrationHandler(c context.Context, m map[string]interface{}, p map[stri
 			return nil, err
 		}
 		s := deb.LargeSpaceBuilder(0).NewSpaceWithOffset(nil, 0, 0, nil)
-		if result, err := accounting.Migrate(c, coa, p["coa"], p["coa2"], s, /*space*/
+		if result, err := accounting.Migrate(c, coa, p["coa"], p["coa2"], s,
 			db.CKey{key}, u); err != nil {
 			return nil, err
 		} else {
