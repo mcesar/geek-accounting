@@ -81,7 +81,6 @@ func main() {
 			fmt.Fprintf(&buf, `], "date": "%vT00:00:00Z", "memo": "%v" }`, record[1], record[2])
 		}
 	}
-	fmt.Println(string(buf.Bytes()))
 	req, err := http.NewRequest("POST", url+"/charts-of-accounts/"+coa+"/transactions", &buf)
 	if err != nil {
 		panic(err)
