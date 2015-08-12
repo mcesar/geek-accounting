@@ -682,7 +682,7 @@ func SaveTransactions(c context.Context, maps []map[string]interface{}, param ma
 	if !ok {
 		return nil, fmt.Errorf("Space not informed")
 	}
-	now := deb.Moment(time.Now().UnixNano())
+	now := time.Now().UnixNano()
 	transactions := make([]*deb.Transaction, len(maps))
 	_, accounts, err := accountsSortedByCreation(c, param["coa"])
 	if err != nil {
@@ -720,7 +720,7 @@ func SaveTransactions(c context.Context, maps []map[string]interface{}, param ma
 			return nil, err
 		}
 		transactions[i] = &deb.Transaction{
-			Moment:   now,
+			Moment:   deb.Moment(now + i),
 			Date:     SerializedDate(date),
 			Entries:  entries,
 			Metadata: buf.Bytes()}
