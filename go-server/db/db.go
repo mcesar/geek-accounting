@@ -3,9 +3,10 @@ package db
 import (
 	"errors"
 	"fmt"
+	"reflect"
+
 	"github.com/mcesarhm/geek-accounting/go-server/cache"
 	"github.com/mcesarhm/geek-accounting/go-server/extensions/collections"
-	"reflect"
 	//"log"
 
 	"strings"
@@ -19,7 +20,7 @@ type Db interface {
 	GetAllFromCache(kind string, ancestor string, items interface{}, filters M, orderKeys []string, c cache.Cache, cacheKey string) (Keys, interface{}, error)
 	Save(item interface{}, kind string, ancestor string, param map[string]string) (key Key, err error)
 	Delete(Key) error
-	Execute(func() error) error
+	Execute(func(Db) error) error
 	DecodeKey(string) (Key, error)
 	NewKey() Key
 	NewStringKey(kind, key string) Key

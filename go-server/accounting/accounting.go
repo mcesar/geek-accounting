@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
+	"log"
 	"strconv"
 
 	"github.com/mcesarhm/geek-accounting/go-server/context"
@@ -409,20 +410,20 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 		account.Tags = append(account.Tags, "analytic")
 	}
 
-	err = c.Db.Execute(func() (err error) {
+	err = c.Db.Execute(func(tdb db.Db) (err error) {
 
-		accountKey, err := c.Db.Save(account, "Account", param["coa"], param)
+		accountKey, err := tdb.Save(account, "Account", param["coa"], param)
 		if err != nil {
 			return
 		}
 
 		if retainedEarningsAccount {
 			coa := new(ChartOfAccounts)
-			if _, err = c.Db.Get(coa, param["coa"]); err != nil {
+			if _, err = tdb.Get(coa, param["coa"]); err != nil {
 				return
 			}
 			coa.RetainedEarningsAccount = accountKey.(db.CKey)
-			if _, err = c.Db.Save(coa, "ChartOfAccounts", "", param); err != nil {
+			if _, err = tdb.Save(coa, "ChartOfAccounts", "", param); err != nil {
 				return
 			}
 		}
@@ -439,7 +440,7 @@ func SaveAccount(c context.Context, m map[string]interface{}, param map[string]s
 				changed = true
 			}
 			if changed {
-				if _, err = c.Db.Save(parent, "Account", param["coa"], param); err != nil {
+				if _, err = tdb.Save(parent, "Account", param["coa"], param); err != nil {
 					return
 				}
 			}
@@ -500,13 +501,13 @@ func DeleteAccount(c context.Context, m map[string]interface{}, param map[string
 			return
 		}
 	*/
-	err = c.Db.Execute(func() error {
+	err = c.Db.Execute(func(tdb db.Db) error {
 		var a Account
-		if _, err := c.Db.Get(&a, key.Encode()); err != nil {
+		if _, err := tdb.Get(&a, key.Encode()); err != nil {
 			return err
 		}
 		a.Removed = true
-		if _, err := c.Db.Save(&a, "Account", coaKey.Encode(), param); err != nil {
+		if _, err := tdb.Save(&a, "Account", coaKey.Encode(), param); err != nil {
 			return err
 		}
 		return nil
@@ -558,11 +559,20 @@ func GetTransaction(c context.Context, m map[string]interface{}, param map[strin
 	}
 }
 
-func SaveTransaction(c context.Context, m map[string]interface{}, param map[string]string,
+func SaveTransaction(c context.Context, maps []map[string]interface{}, param map[string]string,
 	userKey core.UserKey) (item interface{}, err error) {
 
-	asOf := time.Now()
+	if len(maps) == 0 {
+		return nil, fmt.Errorf("maps is empty")
+	}
 
+	if len(maps) > 1 {
+		return SaveTransactions(c, maps, param, userKey)
+	}
+
+	m := maps[0]
+
+	asOf := time.Now()
 	transaction := &Transaction{
 		Memo: m["memo"].(string),
 		AsOf: asOf,
@@ -661,6 +671,69 @@ func SaveTransaction(c context.Context, m map[string]interface{}, param map[stri
 	item = transaction
 
 	return
+}
+
+func SaveTransactions(c context.Context, maps []map[string]interface{}, param map[string]string,
+	userKey core.UserKey) (item interface{}, err error) {
+	if len(maps) == 0 {
+		return nil, nil
+	}
+	space, ok := maps[0]["space"].(deb.Space)
+	if !ok {
+		return nil, fmt.Errorf("Space not informed")
+	}
+	now := deb.Moment(time.Now().UnixNano())
+	transactions := make([]*deb.Transaction, len(maps))
+	_, accounts, err := accountsSortedByCreation(c, param["coa"])
+	if err != nil {
+		return nil, err
+	}
+	accountsMap := map[string]int{}
+	for i, a := range accounts {
+		accountsMap[a.Number] = i + 1
+	}
+	for i, m := range maps {
+		date, err := time.Parse(time.RFC3339, m["date"].(string))
+		if err != nil {
+			return nil, err
+		}
+		entries := deb.Entries{}
+		addEntry := func(e interface{}, signal int) {
+			em := e.(map[string]interface{})
+			entries[deb.Account(accountsMap[em["account"].(string)])] =
+				int64(signal) * int64(xmath.Round(em["value"].(float64)*100))
+		}
+		for _, e := range m["debits"].([]interface{}) {
+			addEntry(e, 1)
+		}
+		for _, e := range m["credits"].([]interface{}) {
+			addEntry(e, -1)
+		}
+		memo, ok := m["memo"].(string)
+		if !ok {
+			return nil, fmt.Errorf("Memo must be informed")
+		}
+		metadata := transactionMetadata{memo, nil, userKey, -1}
+		var buf bytes.Buffer
+		enc := gob.NewEncoder(&buf)
+		if err := enc.Encode(metadata); err != nil {
+			return nil, err
+		}
+		transactions[i] = &deb.Transaction{
+			Moment:   now,
+			Date:     SerializedDate(date),
+			Entries:  entries,
+			Metadata: buf.Bytes()}
+	}
+	ch := make(chan *deb.Transaction)
+	go func() {
+		for _, t := range transactions {
+			log.Println(t)
+			ch <- t
+		}
+		close(ch)
+	}()
+	return nil, space.Append(deb.ChannelSpace(ch))
 }
 
 func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
@@ -789,7 +862,8 @@ func AccountsByCreation(accounts []*Account, keys db.Keys) ([]*Account, db.Keys)
 	return sortedAccounts, sortedKeys
 }
 
-func NewTransactionFromSpace(t *deb.Transaction, keys db.Keys) (*Transaction, *transactionMetadata, error) {
+func NewTransactionFromSpace(t *deb.Transaction, keys db.Keys) (*Transaction,
+	*transactionMetadata, error) {
 	d := time.Date(int(t.Date%100000000/10000), time.Month(t.Date%10000/100), int(t.Date%100),
 		0, 0, 0, 0, time.UTC)
 	m := time.Unix(0, int64(t.Moment))
@@ -1168,6 +1242,7 @@ func Migrate(c context.Context, coa *ChartOfAccounts, coaKey, coa2Key string, sp
 	if err != nil {
 		return nil, err
 	}
+	maps := []map[string]interface{}{}
 	for _, t := range *transactions {
 		m := map[string]interface{}{}
 		debits := make([]interface{}, len(t.Debits))
@@ -1192,9 +1267,10 @@ func Migrate(c context.Context, coa *ChartOfAccounts, coaKey, coa2Key string, sp
 		m["accounts_map"] = am2
 		m["accounts_sorted_by_creation"] = accountsSorted
 		m["accounts_keys_sorted_by_creation"] = accountsSortedKeys
-		if _, err := SaveTransaction(c, m, param, userKey); err != nil {
-			return nil, err
-		}
+		maps = append(maps, m)
+	}
+	if _, err := SaveTransactions(c, maps, param, userKey); err != nil {
+		return nil, err
 	}
 	return fmt.Sprintf("Migrated to %v. %v accounts", coa2.Name, len(*accounts)), nil
 }

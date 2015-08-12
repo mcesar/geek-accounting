@@ -5,12 +5,14 @@ package db
 import (
 	"errors"
 	"fmt"
-	"github.com/mcesarhm/geek-accounting/go-server/cache"
-	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
 	"reflect"
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/mcesarhm/geek-accounting/go-server/cache"
+	"github.com/mcesarhm/geek-accounting/go-server/db"
+	xmath "github.com/mcesarhm/geek-accounting/go-server/extensions/math"
 )
 
 type inMemoryDb struct {
@@ -240,8 +242,8 @@ func (db inMemoryDb) Delete(key Key) error {
 	return nil
 }
 
-func (db inMemoryDb) Execute(f func() error) error {
-	return f()
+func (db inMemoryDb) Execute(f func(db.Db) error) error {
+	return f(db)
 }
 
 func (db inMemoryDb) DecodeKey(s string) (Key, error) {

@@ -256,9 +256,9 @@ func (db appengineDb) Delete(key Key) error {
 	return datastore.Delete(db.c, key.(CKey).DsKey)
 }
 
-func (db appengineDb) Execute(f func() error) error {
-	return datastore.RunInTransaction(db.c, func(appengine.Context) (err error) {
-		return f()
+func (db appengineDb) Execute(f func(Db) error) error {
+	return datastore.RunInTransaction(db.c, func(tc appengine.Context) (err error) {
+		return f(NewAppengineDb(tc))
 	}, nil)
 }
 

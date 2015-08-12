@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"encoding/gob"
 	"encoding/json"
+	"io"
 	//"io/ioutil"
 	"log"
 	"net/http"
@@ -35,6 +36,9 @@ type readHandlerFunc func(context.Context, map[string]interface{}, map[string]st
 type writeHandlerFunc func(context.Context, map[string]interface{}, map[string]string,
 	core.UserKey) (interface{}, error)
 
+type writeHandlerFuncMulti func(context.Context, []map[string]interface{}, map[string]string,
+	core.UserKey) (interface{}, error)
+
 func init() {
 	gob.Register(([]*accounting.Account)(nil))
 	gob.Register((*accounting.Account)(nil))
@@ -44,7 +48,8 @@ func init() {
 	r.HandleFunc(PathPrefix, getAllHandler(accounting.AllChartsOfAccounts)).Methods("GET")
 	r.HandleFunc(PathPrefix, postHandler2(coaPostHandler, true)).Methods("POST")
 	r.HandleFunc(PathPrefix+"/{coa}", postHandler(accounting.SaveChartOfAccounts)).Methods("PUT")
-	r.HandleFunc(PathPrefix+"/{coa}/accounts", getAllHandler(accounting.AllAccounts)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/accounts", getAllHandler(accounting.AllAccounts)).
+		Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}",
 		getAllHandler(accounting.GetAccount)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/accounts", postHandler(accounting.SaveAccount)).Methods("POST")
@@ -55,14 +60,15 @@ func init() {
 	r.HandleFunc(PathPrefix+"/{coa}/transactions",
 		getAllHandler(accounting.AllTransactions)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions",
-		postHandler(accounting.SaveTransaction)).Methods("POST")
+		postHandlerMulti(accounting.SaveTransaction, false)).Methods("POST")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}",
-		postHandler(accounting.SaveTransaction)).Methods("PUT")
+		postHandlerMulti(accounting.SaveTransaction, false)).Methods("PUT")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}",
 		getAllHandler(accounting.GetTransaction)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}",
 		deleteHandler(accounting.DeleteTransaction)).Methods("DELETE")
-	r.HandleFunc(PathPrefix+"/{coa}/balance-sheet", getAllHandler(reporting.Balance)).Methods("GET")
+	r.HandleFunc(PathPrefix+"/{coa}/balance-sheet", getAllHandler(reporting.Balance)).
+		Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/journal", getAllHandler(reporting.Journal)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/accounts/{account}/ledger",
 		getAllHandler(reporting.Ledger)).Methods("GET")
@@ -244,6 +250,47 @@ func postHandler2(f writeHandlerFunc, includeContextInMap bool) http.HandlerFunc
 
 		json.NewEncoder(w).Encode(item)
 
+		return nil
+	})
+}
+
+func postHandlerMulti(f writeHandlerFuncMulti, includeContextInMap bool) http.HandlerFunc {
+	return errorHandler(func(w http.ResponseWriter, r *http.Request, userKey core.UserKey) error {
+		var (
+			s   deb.Space
+			err error
+		)
+		ctx := appengine.NewContext(r)
+		c := newContext(ctx)
+		params := mux.Vars(r)
+		if coaKey, ok := params["coa"]; ok {
+			if s, _, err = space(c, ctx, coaKey); err != nil {
+				return err
+			}
+		}
+		maps := []map[string]interface{}{}
+		var req interface{}
+		dec := json.NewDecoder(r.Body)
+		for {
+			if err = dec.Decode(&req); err == io.EOF {
+				break
+			} else if err != nil {
+				return badRequest{err}
+			}
+			m := req.(map[string]interface{})
+			if includeContextInMap {
+				m["_appengine_context"] = ctx
+			}
+			if s != nil {
+				m["space"] = s
+			}
+			maps = append(maps, m)
+		}
+		item, err := f(c, maps, params, userKey)
+		if err != nil {
+			return badRequest{err}
+		}
+		json.NewEncoder(w).Encode(item)
 		return nil
 	})
 }
