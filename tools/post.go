@@ -81,13 +81,21 @@ func main() {
 			fmt.Fprintf(&buf, `], "date": "%vT00:00:00Z", "memo": "%v" }`, record[1], record[2])
 		}
 	}
+	var username, password string
+	username = "admin"
+	password = "admin"
+	// fmt.Print("Enter Username: ")
+	// fmt.Scan("%s", &username)
+	// fmt.Print("Enter Password: ")
+	// fmt.Scan("%s", &password)
+
 	req, err := http.NewRequest("POST", url+"/charts-of-accounts/"+coa+"/transactions", &buf)
 	if err != nil {
 		panic(err)
 	}
 	req.Close = false
 	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth("admin", "admin")
+	req.SetBasicAuth(username, password)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
