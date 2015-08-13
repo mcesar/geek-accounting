@@ -5,6 +5,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"log"
+	"reflect"
 	"strconv"
 
 	"github.com/mcesarhm/geek-accounting/go-server/context"
@@ -720,7 +721,7 @@ func SaveTransactions(c context.Context, maps []map[string]interface{}, param ma
 			return nil, err
 		}
 		transactions[i] = &deb.Transaction{
-			Moment:   deb.Moment(now + i),
+			Moment:   deb.Moment(now + int64(i)),
 			Date:     SerializedDate(date),
 			Entries:  entries,
 			Metadata: buf.Bytes()}
@@ -734,6 +735,22 @@ func SaveTransactions(c context.Context, maps []map[string]interface{}, param ma
 		close(ch)
 	}()
 	return nil, space.Append(deb.ChannelSpace(ch))
+}
+
+func PopTransaction(c context.Context, m map[string]interface{}, param map[string]string,
+	userKey core.UserKey) (item interface{}, err error) {
+	space, ok := m["space"].(deb.Space)
+	if !ok {
+		return nil, fmt.Errorf("Space not informed")
+	}
+	if _, ok := param["coa"]; !ok {
+		return nil, fmt.Errorf("Coa not informed")
+	}
+	ret := reflect.ValueOf(space).MethodByName("Pop").Call(nil)
+	if !ret[0].IsNil() {
+		return nil, ret[0].Interface().(error)
+	}
+	return nil, nil
 }
 
 func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,

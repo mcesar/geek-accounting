@@ -64,3 +64,8 @@ indexes:
   properties:
   - name: __key__
   - name: AsOf
+
+- kind: data_block
+  ancestor: yes
+  properties:
+  - name: AsOf

@@ -80,6 +80,8 @@ func init() {
 		postHandler2(coaMigrationHandler, true)).Methods("POST")
 	r.HandleFunc(PathPrefix+"/{coa}/migration_enqueue",
 		postHandler2(coaMigrationEnqueueHandler, true)).Methods("POST")
+	r.HandleFunc(PathPrefix+"/{coa}/transactions/pop",
+		postHandler(accounting.PopTransaction)).Methods("POST")
 	r.HandleFunc("/_ah/warmup", func(w http.ResponseWriter, r *http.Request) {
 		ac := appengine.NewContext(r)
 		c := newContext(ac)
