@@ -45,7 +45,7 @@ func main() {
 
 	doc, err := ofx.Parse(os.Stdin)
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Error parsing OFX: ", err)
 		os.Exit(1)
 	}
 	st := strings.Title
