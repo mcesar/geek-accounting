@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/csv"
+	"flag"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"strconv"
 	"strings"
+
+	"golang.org/x/crypto/ssh/terminal"
 )
 
 func main() {
@@ -27,6 +30,9 @@ func main() {
 		printUsage()
 		return
 	}
+
+	username := flag.String("u", "admin", "user name")
+	flag.Parse()
 
 	var buf bytes.Buffer
 
@@ -81,13 +87,17 @@ func main() {
 			fmt.Fprintf(&buf, `], "date": "%vT00:00:00Z", "memo": "%v" }`, record[1], record[2])
 		}
 	}
-	var username, password string
-	username = "admin"
-	password = "admin"
-	// fmt.Print("Enter Username: ")
-	// fmt.Scan("%s", &username)
-	// fmt.Print("Enter Password: ")
-	// fmt.Scan("%s", &password)
+	oldState, err := terminal.MakeRaw(1)
+	if err != nil {
+		panic(err)
+	}
+	defer terminal.Restore(1, oldState)
+	fmt.Print("Password: ")
+	pw, err := terminal.ReadPassword(1)
+	if err != nil {
+		panic(err)
+	}
+	password := string(pw)
 
 	req, err := http.NewRequest("POST", url+"/charts-of-accounts/"+coa+"/transactions", &buf)
 	if err != nil {
@@ -95,7 +105,7 @@ func main() {
 	}
 	req.Close = false
 	req.Header.Set("Content-Type", "application/json")
-	req.SetBasicAuth(username, password)
+	req.SetBasicAuth(*username, password)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
