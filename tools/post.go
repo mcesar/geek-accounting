@@ -32,17 +32,30 @@ func main() {
 	}
 
 	username := flag.String("u", "admin", "user name")
+	filename := flag.String("f", "", "file name")
 	flag.Parse()
 
-	var buf bytes.Buffer
+	var (
+		buf bytes.Buffer
+		f   *os.File
+	)
+	if *filename == "" {
+		f = os.Stdin
+	} else {
+		var err error
+		if f, err = os.Open(*filename); err != nil {
+			fmt.Fprintln(os.Stderr, "Error opening file:", err)
+			return
+		}
+	}
 
-	csvReader := csv.NewReader(os.Stdin)
+	csvReader := csv.NewReader(f)
 	for {
 		record, err := csvReader.Read()
 		if err == io.EOF {
 			break
 		} else if err != nil && err != io.EOF {
-			fmt.Fprintln(os.Stderr, "reading standard input:", err)
+			fmt.Fprintln(os.Stderr, "Error reading standard input:", err)
 			return
 		} else {
 			debits := []string{}
