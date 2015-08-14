@@ -1,26 +1,42 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"math"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"rsc.io/pdf"
 )
 
+type Transaction struct {
+	Date   string
+	Amount float64
+	Memo   string
+}
+
 func main() {
-	if len(os.Args) < 2 {
-		fmt.Fprintln(os.Stderr, "usage: pdf2csv file.pdf")
+	substitutionsFile := flag.String("s", "", "substitutions file")
+	flag.Parse()
+
+	if len(flag.Args()) < 1 {
+		fmt.Fprintln(os.Stderr, "usage: pdf2csv file.pdf [-s substitutions.csv]")
 		os.Exit(2)
 	}
-	r, err := pdf.Open(os.Args[1])
+	r, err := pdf.Open(flag.Arg(0))
 	if err != nil {
 		log.Fatal(err)
 	}
-	var year string
+	transactions := []Transaction{}
+	var (
+		year string
+		date string
+		memo string
+	)
 	start := false
 PageLoop:
 	for i := 1; i <= r.NumPage(); i++ {
@@ -34,23 +50,51 @@ PageLoop:
 				break PageLoop
 			}
 			if start && t.X >= 195 && t.X <= 210 && t.S != "descrição" {
-				fmt.Println(t.S)
+				if memo != "" {
+					fmt.Fprintf(os.Stderr, "Malformed: %v", t.S)
+					os.Exit(2)
+				}
+				memo = t.S
 			}
 			if start && t.X >= 150 && t.X <= 153 && t.S != "data" {
-				fmt.Println(t.S)
+				arr := strings.Split(t.S, "/")
+				date = year + "-" + arr[1] + "-" + arr[0]
 			}
-			if start && t.X+t.W >= 457 && t.X+t.W <= 461 &&
+			if start && (t.X+t.W >= 457 && t.X+t.W <= 461 || t.X+t.W >= 394 && t.X+t.W <= 396) &&
 				t.S != "saídas R$" && t.S != "(débitos)" {
-				fmt.Println(t.S)
-			}
-			if start && t.X+t.W >= 394 && t.X+t.W <= 396 &&
-				t.S != "saídas R$" && t.S != "(débitos)" {
-				fmt.Println(t.S)
+				var (
+					amount float64
+					err    error
+				)
+				t.S = strings.Replace(t.S, ".", "", -1)
+				t.S = strings.Replace(t.S, ",", ".", 1)
+				if strings.HasSuffix(t.S, "-") {
+					amount, err = strconv.ParseFloat("-"+t.S[0:len(t.S)-1], 64)
+				} else {
+					amount, err = strconv.ParseFloat(t.S, 64)
+				}
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error parsing amount: %v", t.S)
+					os.Exit(2)
+				}
+				transactions = append(transactions, Transaction{date, amount, memo})
+				memo = ""
 			}
 			if !start && i == 1 && t.X >= 514 && t.X <= 515 && t.Y >= 763 && t.Y <= 764 {
 				year = t.S[4:]
 			}
 		}
+	}
+	var substitutions Substitutions
+	if *substitutionsFile != "" {
+		if substitutions, err = NewSubstitutions(*substitutionsFile); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return
+		}
+	}
+	for _, t := range transactions {
+		account, amount, memo := substitutions.ReplaceData(t.Amount, t.Memo)
+		fmt.Printf("\"%v:%v\",%v,\"%v\"\n", account, amount, t.Date, memo)
 	}
 }
 
