@@ -699,16 +699,25 @@ func SaveTransactions(c context.Context, maps []map[string]interface{}, param ma
 			return nil, err
 		}
 		entries := deb.Entries{}
-		addEntry := func(e interface{}, signal int) {
+		addEntry := func(e interface{}, signal int) error {
 			em := e.(map[string]interface{})
-			entries[deb.Account(accountsMap[em["account"].(string)])] =
+			account, ok := accountsMap[em["account"].(string)]
+			if !ok {
+				return fmt.Errorf("Account not found %v", em["account"])
+			}
+			entries[deb.Account(account)] =
 				int64(signal) * int64(xmath.Round(em["value"].(float64)*100))
+			return nil
 		}
 		for _, e := range m["debits"].([]interface{}) {
-			addEntry(e, 1)
+			if err = addEntry(e, 1); err != nil {
+				return nil, err
+			}
 		}
 		for _, e := range m["credits"].([]interface{}) {
-			addEntry(e, -1)
+			if err = addEntry(e, -1); err != nil {
+				return nil, err
+			}
 		}
 		memo, ok := m["memo"].(string)
 		if !ok {
