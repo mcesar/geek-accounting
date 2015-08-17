@@ -49,9 +49,11 @@ PageLoop:
 			if start && t.X == 209.52 && t.S == "Saldo em C/C" {
 				break PageLoop
 			}
-			if start && t.X >= 195 && t.X <= 210 && t.S != "descrição" {
+			if start && t.X >= 195 && t.X <= 210 &&
+				t.S != "descrição" && t.S != "(-) Saldo a liberar" &&
+				t.S != "Saldo final disponivel" {
 				if memo != "" {
-					fmt.Fprintf(os.Stderr, "Malformed: %v", t.S)
+					fmt.Fprintf(os.Stderr, "Malformed: %v\n", t.S)
 					os.Exit(2)
 				}
 				memo = t.S
@@ -60,8 +62,9 @@ PageLoop:
 				arr := strings.Split(t.S, "/")
 				date = year + "-" + arr[1] + "-" + arr[0]
 			}
-			if start && (t.X+t.W >= 457 && t.X+t.W <= 461 || t.X+t.W >= 394 && t.X+t.W <= 396) &&
-				t.S != "saídas R$" && t.S != "(débitos)" {
+			if start && (t.X+t.W >= 457 && t.X+t.W <= 461 || t.X+t.W >= 394 && t.X+t.W <= 398) &&
+				t.S != "saídas R$" && t.S != "entradas R$" &&
+				t.S != "(débitos)" && t.S != "(créditos)" {
 				var (
 					amount float64
 					err    error
