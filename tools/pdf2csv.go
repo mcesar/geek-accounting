@@ -13,7 +13,7 @@ import (
 	"rsc.io/pdf"
 )
 
-type Transaction struct {
+type transaction struct {
 	Date   string
 	Amount float64
 	Memo   string
@@ -31,7 +31,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	transactions := []Transaction{}
+	transactions := []transaction{}
 	var (
 		year string
 		date string
@@ -80,7 +80,7 @@ PageLoop:
 					fmt.Fprintf(os.Stderr, "Error parsing amount: %v", t.S)
 					os.Exit(2)
 				}
-				transactions = append(transactions, Transaction{date, amount, memo})
+				transactions = append(transactions, transaction{date, amount, memo})
 				memo = ""
 			}
 			if !start && i == 1 && t.X >= 514 && t.X <= 515 && t.Y >= 763 && t.Y <= 764 {
@@ -155,7 +155,8 @@ func findWords(chars []pdf.Text) (words []pdf.Text) {
 			f := ck.Font
 			f = strings.TrimSuffix(f, ",Italic")
 			f = strings.TrimSuffix(f, "-Italic")
-			words = append(words, pdf.Text{f, ck.FontSize, ck.X, ck.Y, end - ck.X, s})
+			words = append(words,
+				pdf.Text{Font: f, FontSize: ck.FontSize, X: ck.X, Y: ck.Y, W: end - ck.X, S: s})
 			k = l
 		}
 		i = j
@@ -171,11 +172,3 @@ func sameFont(f1, f2 string) bool {
 	f2 = strings.TrimSuffix(f1, "-Italic")
 	return strings.TrimSuffix(f1, ",Italic") == strings.TrimSuffix(f2, ",Italic") || f1 == "Symbol" || f2 == "Symbol" || f1 == "TimesNewRoman" || f2 == "TimesNewRoman"
 }
-
-// {MyriadPro-SemiCn 7.67 207.6 230.72 41.26459999999997 Saldo anterior}
-// {MyriadPro-SemiCn 7.67 207.6 206.96 80.94151000000008 Rshop-CLAERRO SOR-02/01}
-// {MyriadPro-SemiCn 7.67 200.88 197.12 69.75973000000005 P Remuneração/Salário}
-// {MyriadPro-SemiCn 7.67 209.52 723.44 72.67325000000002 Rshop-LE BIJOUX -13/01}
-// {MyriadPro-SemiCn 7.67 150.48 206.96 17.05807999999999 02/02}
-// {MyriadPro-SemiCn 7.67 439.92 206.96 18.41567000000009 11,00-}
-// {MyriadPro-SemiCn 7.67 430.56 51.2 27.25918000000013 2.178,64-} 458.336

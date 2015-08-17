@@ -34,17 +34,17 @@ func NewSubstitutions(file string) (Substitutions, error) {
 		if err == io.EOF {
 			break
 		} else if err != nil && err != io.EOF {
-			return nil, fmt.Errorf("reading substitutions file:", err)
+			return nil, fmt.Errorf("reading substitutions file: %v", err)
 		}
 		s := substitution{record[0], record[1], record[2], 0, 0}
 		if len(record) > 3 {
 			if s.minValue, err = strconv.ParseFloat(record[3], 64); err != nil {
-				return nil, fmt.Errorf("Error converting minValue:", err)
+				return nil, fmt.Errorf("Error converting minValue: %v", err)
 			}
 		}
 		if len(record) > 4 {
 			if s.maxValue, err = strconv.ParseFloat(record[4], 64); err != nil {
-				return nil, fmt.Errorf("Error converting maxValue:", err)
+				return nil, fmt.Errorf("Error converting maxValue: %v", err)
 			}
 		}
 		substitutions = append(substitutions, s)
