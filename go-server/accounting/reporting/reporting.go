@@ -25,15 +25,6 @@ func (s sorter) Len() int           { return len(s.arr) }
 func (s sorter) Swap(i, j int)      { s.arr[i], s.arr[j] = s.arr[j], s.arr[i] }
 func (s sorter) Less(i, j int) bool { return s.less(s.arr[i], s.arr[j]) }
 
-/*
-func (arr byNumber) Len() int      { return len(arr) }
-func (arr byNumber) Swap(i, j int) { arr[i], arr[j] = arr[j], arr[i] }
-func (arr byNumber) Less(i, j int) bool {
-	a1 := arr[i]["account"].(map[string]interface{})
-	a2 := arr[j]["account"].(map[string]interface{})
-	return a1["number"].(string) < a2["number"].(string)
-}
-*/
 func Balance(c context.Context, m map[string]interface{}, param map[string]string,
 	_ core.UserKey) (result interface{}, err error) {
 	from := time.Date(1000, 1, 1, 0, 0, 0, 0, time.UTC)
@@ -99,18 +90,32 @@ func Balance(c context.Context, m map[string]interface{}, param map[string]strin
 					db.M{"account": accountToMap(k, sortedAccounts[i]), "value": float64(0)})
 			}
 		}
+		lookupAccount := func(key db.Key) *accounting.Account {
+			if key.IsZero() {
+				return nil
+			}
+			for i, a := range sortedAccounts {
+				if sortedKeys[i].Encode() == key.Encode() {
+					return a
+				}
+			}
+			return nil
+		}
 		for k, v := range toBeProcessed {
 			p := v.Parent
 			for !p.IsZero() {
 				idx := accountsInserted[p.Encode()]
-				arr[idx]["value"] = arr[idx]["value"].(float64) +
-					arr[accountsInserted[k]]["value"].(float64)
-				for i, a := range sortedAccounts {
-					if sortedKeys[i].Encode() == p.Encode() {
-						p = a.Parent
-						break
+				value := arr[accountsInserted[k]]["value"].(float64)
+				if a := lookupAccount(p); a != nil {
+					if (collections.Contains(a.Tags, "creditBalance") &&
+						collections.Contains(v.Tags, "debitBalance")) ||
+						(collections.Contains(a.Tags, "debitBalance") &&
+							collections.Contains(v.Tags, "creditBalance")) {
+						value = -value
 					}
+					p = a.Parent
 				}
+				arr[idx]["value"] = arr[idx]["value"].(float64) + value
 			}
 		}
 		less := func(m1, m2 db.M) bool {
