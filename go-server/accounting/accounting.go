@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	"log"
 	"reflect"
 	"strconv"
 
@@ -705,7 +704,10 @@ func SaveTransactions(c context.Context, maps []map[string]interface{}, param ma
 			if !ok {
 				return fmt.Errorf("Account not found %v", em["account"])
 			}
-			entries[deb.Account(account)] =
+			if _, ok := entries[deb.Account(account)]; !ok {
+				entries[deb.Account(account)] = int64(0)
+			}
+			entries[deb.Account(account)] +=
 				int64(signal) * int64(xmath.Round(em["value"].(float64)*100))
 			return nil
 		}
@@ -738,7 +740,7 @@ func SaveTransactions(c context.Context, maps []map[string]interface{}, param ma
 	ch := make(chan *deb.Transaction)
 	go func() {
 		for _, t := range transactions {
-			log.Println(t)
+			//log.Println(t)
 			ch <- t
 		}
 		close(ch)
@@ -1223,6 +1225,7 @@ func Migrate(c context.Context, coa *ChartOfAccounts, coaKey, coa2Key string, sp
 		}
 		err = c.Cache.Delete("ChartOfAccounts")
 		param["coa"] = coa2.Key.Encode()
+		coa2Key = coa2.Key.Encode()
 		for _, a := range *accounts {
 			if a.Removed {
 				continue

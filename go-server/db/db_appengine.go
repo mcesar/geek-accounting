@@ -275,6 +275,10 @@ func (db appengineDb) NewKey() Key {
 	return CKey{nil}
 }
 
+func (db appengineDb) Log(s string) {
+	db.c.Infof(s)
+}
+
 func toKeys(dsKeys []*datastore.Key) Keys {
 	result := Keys{}
 	for _, k := range dsKeys {
