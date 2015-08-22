@@ -7,7 +7,6 @@ import (
 	"math"
 	"os"
 	"sort"
-	"strconv"
 	"strings"
 
 	"rsc.io/pdf"
@@ -18,6 +17,13 @@ type transaction struct {
 	Amount float64
 	Memo   string
 }
+
+type handler interface {
+	start(chan transaction)
+	handleWord(word *pdf.Text, page int) bool
+}
+
+var h handler
 
 func main() {
 	substitutionsFile := flag.String("s", "", "substitutions file")
@@ -31,63 +37,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	transactions := []transaction{}
-	var (
-		year string
-		date string
-		memo string
-	)
-	start := false
-PageLoop:
-	for i := 1; i <= r.NumPage(); i++ {
-		words := findWords(r.Page(i).Content().Text)
-		for _, t := range words {
-			if t.X == 207.6 && t.S == "Saldo anterior" {
-				start = true
-				continue
-			}
-			if start && t.X == 209.52 && t.S == "Saldo em C/C" {
-				break PageLoop
-			}
-			if start && t.X >= 195 && t.X <= 210 &&
-				t.S != "descrição" && t.S != "(-) Saldo a liberar" &&
-				t.S != "Saldo final disponivel" {
-				if memo != "" {
-					fmt.Fprintf(os.Stderr, "Malformed: %v\n", t.S)
-					os.Exit(2)
-				}
-				memo = t.S
-			}
-			if start && t.X >= 150 && t.X <= 153 && t.S != "data" {
-				arr := strings.Split(t.S, "/")
-				date = year + "-" + arr[1] + "-" + arr[0]
-			}
-			if start && (t.X+t.W >= 457 && t.X+t.W <= 461 || t.X+t.W >= 394 && t.X+t.W <= 398) &&
-				t.S != "saídas R$" && t.S != "entradas R$" &&
-				t.S != "(débitos)" && t.S != "(créditos)" {
-				var (
-					amount float64
-					err    error
-				)
-				t.S = strings.Replace(t.S, ".", "", -1)
-				t.S = strings.Replace(t.S, ",", ".", 1)
-				if strings.HasSuffix(t.S, "-") {
-					amount, err = strconv.ParseFloat("-"+t.S[0:len(t.S)-1], 64)
-				} else {
-					amount, err = strconv.ParseFloat(t.S, 64)
-				}
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error parsing amount: %v", t.S)
-					os.Exit(2)
-				}
-				transactions = append(transactions, transaction{date, amount, memo})
-				memo = ""
-			}
-			if !start && i == 1 && t.X >= 514 && t.X <= 515 && t.Y >= 763 && t.Y <= 764 {
-				year = t.S[4:]
-			}
-		}
-	}
 	var substitutions Substitutions
 	if *substitutionsFile != "" {
 		if substitutions, err = NewSubstitutions(*substitutionsFile); err != nil {
@@ -95,7 +44,21 @@ PageLoop:
 			return
 		}
 	}
-	for _, t := range transactions {
+	ch := make(chan transaction)
+	go func() {
+		h.start(ch)
+	PageLoop:
+		for i := 1; i <= r.NumPage(); i++ {
+			words := findWords(r.Page(i).Content().Text)
+			for _, t := range words {
+				if h.handleWord(&t, i) {
+					break PageLoop
+				}
+			}
+		}
+		close(ch)
+	}()
+	for t := range ch {
 		account, amount, memo := substitutions.ReplaceData(t.Amount, t.Memo)
 		fmt.Printf("\"%v:%v\",%v,\"%v\"\n", account, amount, t.Date, memo)
 	}
@@ -171,4 +134,8 @@ func sameFont(f1, f2 string) bool {
 	f2 = strings.TrimSuffix(f1, ",Italic")
 	f2 = strings.TrimSuffix(f1, "-Italic")
 	return strings.TrimSuffix(f1, ",Italic") == strings.TrimSuffix(f2, ",Italic") || f1 == "Symbol" || f2 == "Symbol" || f1 == "TimesNewRoman" || f2 == "TimesNewRoman"
+}
+
+func registerHandler(aHandler handler) {
+	h = aHandler
 }
