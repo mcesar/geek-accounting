@@ -19,8 +19,7 @@ type transaction struct {
 }
 
 type handler interface {
-	start(chan transaction)
-	handleWord(word *pdf.Text, page int) bool
+	handleWord(*pdf.Text, int, chan transaction) bool
 }
 
 var h handler
@@ -35,7 +34,7 @@ func main() {
 	}
 	r, err := pdf.Open(flag.Arg(0))
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal("Error opening pdf: ", err)
 	}
 	var substitutions Substitutions
 	if *substitutionsFile != "" {
@@ -46,12 +45,11 @@ func main() {
 	}
 	ch := make(chan transaction)
 	go func() {
-		h.start(ch)
 	PageLoop:
 		for i := 1; i <= r.NumPage(); i++ {
 			words := findWords(r.Page(i).Content().Text)
 			for _, t := range words {
-				if h.handleWord(&t, i) {
+				if h.handleWord(&t, i, ch) {
 					break PageLoop
 				}
 			}

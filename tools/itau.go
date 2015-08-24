@@ -14,19 +14,13 @@ type itau struct {
 	date    string
 	memo    string
 	year    string
-	ch      chan transaction
 }
 
 func init() {
 	registerHandler(&itau{})
 }
 
-func (i *itau) start(ch chan transaction) {
-	i.started = false
-	i.ch = ch
-}
-
-func (i *itau) handleWord(t *pdf.Text, page int) bool {
+func (i *itau) handleWord(t *pdf.Text, page int, ch chan transaction) bool {
 	if t.X == 207.6 && t.S == "Saldo anterior" {
 		i.started = true
 		return false
@@ -65,7 +59,7 @@ func (i *itau) handleWord(t *pdf.Text, page int) bool {
 			fmt.Fprintf(os.Stderr, "Error parsing amount: %v", t.S)
 			os.Exit(2)
 		}
-		i.ch <- transaction{i.date, amount, i.memo}
+		ch <- transaction{i.date, amount, i.memo}
 		i.memo = ""
 	}
 	if !i.started && page == 1 && t.X >= 514 && t.X <= 515 && t.Y >= 763 && t.Y <= 764 {
