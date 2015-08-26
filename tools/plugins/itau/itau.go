@@ -1,7 +1,8 @@
-package main
+package itau
 
 import (
 	"fmt"
+	toolsPdf "github.com/mcesarhm/geek-accounting/tools/pdf"
 	"os"
 	"strconv"
 	"strings"
@@ -17,10 +18,10 @@ type itau struct {
 }
 
 func init() {
-	registerHandler(&itau{})
+	toolsPdf.RegisterHandler(&itau{})
 }
 
-func (i *itau) handleWord(t *pdf.Text, page int, ch chan transaction) bool {
+func (i *itau) HandleWord(t *pdf.Text, page int, ch chan toolsPdf.Transaction) bool {
 	if t.X == 207.6 && t.S == "Saldo anterior" {
 		i.started = true
 		return false
@@ -59,7 +60,7 @@ func (i *itau) handleWord(t *pdf.Text, page int, ch chan transaction) bool {
 			fmt.Fprintf(os.Stderr, "Error parsing amount: %v", t.S)
 			os.Exit(2)
 		}
-		ch <- transaction{i.date, amount, i.memo}
+		ch <- toolsPdf.Transaction{i.date, amount, i.memo}
 		i.memo = ""
 	}
 	if !i.started && page == 1 && t.X >= 514 && t.X <= 515 && t.Y >= 763 && t.Y <= 764 {

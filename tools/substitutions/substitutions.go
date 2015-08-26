@@ -1,4 +1,4 @@
-package main
+package substitutions
 
 import (
 	"encoding/csv"

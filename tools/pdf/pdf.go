@@ -1,68 +1,34 @@
-package main
+package pdf
 
 import (
-	"flag"
-	"fmt"
-	"log"
 	"math"
-	"os"
 	"sort"
 	"strings"
 
 	"rsc.io/pdf"
 )
 
-type transaction struct {
+type Transaction struct {
 	Date   string
 	Amount float64
 	Memo   string
 }
 
 type handler interface {
-	handleWord(*pdf.Text, int, chan transaction) bool
+	HandleWord(*pdf.Text, int, chan Transaction) bool
 }
 
 var h handler
 
-func main() {
-	substitutionsFile := flag.String("s", "", "substitutions file")
-	flag.Parse()
-
-	if len(flag.Args()) < 1 {
-		fmt.Fprintln(os.Stderr, "usage: pdf2csv file.pdf [-s substitutions.csv]")
-		os.Exit(2)
-	}
-	r, err := pdf.Open(flag.Arg(0))
-	if err != nil {
-		log.Fatal("Error opening pdf: ", err)
-	}
-	var substitutions Substitutions
-	if *substitutionsFile != "" {
-		if substitutions, err = NewSubstitutions(*substitutionsFile); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return
-		}
-	}
-	ch := make(chan transaction)
-	go func() {
-	PageLoop:
-		for i := 1; i <= r.NumPage(); i++ {
-			words := findWords(r.Page(i).Content().Text)
-			for _, t := range words {
-				if h.handleWord(&t, i, ch) {
-					break PageLoop
-				}
-			}
-		}
-		close(ch)
-	}()
-	for t := range ch {
-		account, amount, memo := substitutions.ReplaceData(t.Amount, t.Memo)
-		fmt.Printf("\"%v:%v\",%v,\"%v\"\n", account, amount, t.Date, memo)
-	}
+func RegisterHandler(aHandler handler) {
+	h = aHandler
 }
 
-func findWords(chars []pdf.Text) (words []pdf.Text) {
+func HandleWord(t *pdf.Text, page int, c chan Transaction) bool {
+	return h.HandleWord(t, page, c)
+}
+
+func FindWords(chars []pdf.Text) (words []pdf.Text) {
 	// Sort by Y coordinate and normalize.
 	const nudge = 1
 	sort.Sort(pdf.TextVertical(chars))
@@ -98,14 +64,16 @@ func findWords(chars []pdf.Text) (words []pdf.Text) {
 			for l < j {
 				// Grow word.
 				cl := &chars[l]
-				if sameFont(cl.Font, ck.Font) && math.Abs(cl.FontSize-ck.FontSize) < 0.1 && cl.X <= end+charSpace {
+				if sameFont(cl.Font, ck.Font) && math.Abs(cl.FontSize-ck.FontSize) < 0.1 &&
+					cl.X <= end+charSpace {
 					s += cl.S
 					end = cl.X + cl.W
 					l++
 					continue
 				}
 				// Add space to phrase before next word.
-				if sameFont(cl.Font, ck.Font) && math.Abs(cl.FontSize-ck.FontSize) < 0.1 && cl.X <= end+wordSpace {
+				if sameFont(cl.Font, ck.Font) && math.Abs(cl.FontSize-ck.FontSize) < 0.1 &&
+					cl.X <= end+wordSpace {
 					s += " " + cl.S
 					end = cl.X + cl.W
 					l++
@@ -131,9 +99,6 @@ func sameFont(f1, f2 string) bool {
 	f1 = strings.TrimSuffix(f1, "-Italic")
 	f2 = strings.TrimSuffix(f1, ",Italic")
 	f2 = strings.TrimSuffix(f1, "-Italic")
-	return strings.TrimSuffix(f1, ",Italic") == strings.TrimSuffix(f2, ",Italic") || f1 == "Symbol" || f2 == "Symbol" || f1 == "TimesNewRoman" || f2 == "TimesNewRoman"
-}
-
-func registerHandler(aHandler handler) {
-	h = aHandler
+	return strings.TrimSuffix(f1, ",Italic") == strings.TrimSuffix(f2, ",Italic") ||
+		f1 == "Symbol" || f2 == "Symbol" || f1 == "TimesNewRoman" || f2 == "TimesNewRoman"
 }

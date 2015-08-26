@@ -8,6 +8,7 @@ lib-cov
 *.gz
 *.aux
 *.fdb_latexmk
+*.pdf
 
 pids
 logs
@@ -21,3 +22,6 @@ node_modules/
 
 nodejitsu-config.json
 go-server/client
+
+importer
+pdf2csv
