@@ -22,6 +22,7 @@ import (
 func main() {
 	folderId := flag.String("f", "", "Folder Id")
 	secretFile := flag.String("s", "", "Secret file")
+	destination := flag.String("d", "", "Destination")
 	flag.Parse()
 
 	ctx := context.Background()
@@ -46,16 +47,18 @@ func main() {
 	if err != nil {
 		log.Fatalf("Unable to retrieve files.", err)
 	}
-	tempFolder, err := ioutil.TempDir("", "ga-tools")
-	if err != nil {
-		log.Fatal(err)
+	if *destination == "" {
+		*destination, err = ioutil.TempDir("", "ga-tools")
+		if err != nil {
+			log.Fatal(err)
+		}
 	}
 	for _, f := range files {
 		if f.MimeType == "application/pdf" && f.DownloadUrl != "" {
-			if err := DownloadFile(client, f, tempFolder); err != nil {
+			if err := DownloadFile(client, f, *destination); err != nil {
 				log.Fatalln(err)
 			}
-			fmt.Printf("%s\n", filepath.Join(tempFolder, f.Title))
+			fmt.Printf("%s\n", filepath.Join(*destination, f.Title))
 		}
 	}
 }
