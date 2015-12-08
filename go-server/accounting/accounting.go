@@ -18,6 +18,8 @@ import (
 	"time"
 
 	"mcesar.io/deb"
+
+	"appengine"
 )
 
 type ChartOfAccounts struct {
@@ -738,9 +740,12 @@ func SaveTransactions(c context.Context, maps []map[string]interface{}, param ma
 			Metadata: buf.Bytes()}
 	}
 	ch := make(chan *deb.Transaction)
+	ctx := maps[0]["_appengine_context"].(appengine.Context)
+	deb.RegisterLogger(func(s string) { ctx.Infof(s) })
 	go func() {
 		for _, t := range transactions {
 			//log.Println(t)
+			//ctx.Infof("%v\n", t)
 			ch <- t
 		}
 		close(ch)

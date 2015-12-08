@@ -60,7 +60,7 @@ func init() {
 	r.HandleFunc(PathPrefix+"/{coa}/transactions",
 		getAllHandler(accounting.AllTransactions)).Methods("GET")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions",
-		postHandlerMulti(accounting.SaveTransaction, false)).Methods("POST")
+		postHandlerMulti(accounting.SaveTransaction, true)).Methods("POST")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}",
 		postHandlerMulti(accounting.SaveTransaction, false)).Methods("PUT")
 	r.HandleFunc(PathPrefix+"/{coa}/transactions/{transaction}",
@@ -273,6 +273,8 @@ func postHandlerMulti(f writeHandlerFuncMulti, includeContextInMap bool) http.Ha
 		maps := []map[string]interface{}{}
 		var req interface{}
 		dec := json.NewDecoder(r.Body)
+		isMulti := false
+		var count int64
 		for {
 			if err = dec.Decode(&req); err == io.EOF {
 				break
@@ -286,7 +288,17 @@ func postHandlerMulti(f writeHandlerFuncMulti, includeContextInMap bool) http.Ha
 			if s != nil {
 				m["space"] = s
 			}
-			maps = append(maps, m)
+			if _, ok := m["__multi__"]; ok {
+				isMulti = true
+			} else if v, ok := m["__count__"]; ok {
+				count = int64(v.(float64))
+			} else {
+				maps = append(maps, m)
+			}
+		}
+		//ctx.Infof("******", isMulti, count)
+		if isMulti && int64(len(maps)) != count {
+			return badRequest{fmt.Errorf("Multi post with incorrect count %v != %v", len(maps), count)}
 		}
 		item, err := f(c, maps, params, userKey)
 		if err != nil {
