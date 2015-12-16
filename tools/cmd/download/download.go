@@ -39,7 +39,9 @@ func main() {
 		}
 	}
 	for _, f := range files {
-		if f.MimeType == "application/pdf" && f.DownloadUrl != "" {
+		if (f.MimeType == "application/pdf" ||
+			f.MimeType == "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet") &&
+			f.DownloadUrl != "" {
 			if err := gdrive.DownloadFile(client, f, *destination); err != nil {
 				log.Fatalln(err)
 			}
