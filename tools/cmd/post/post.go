@@ -82,7 +82,9 @@ func main() {
 		}
 		if *account == "" {
 			if int64(sum*100) != 0 {
-				fmt.Fprintf(os.Stderr, "Debits plus credits is different from 0: %v\n", sum)
+				fmt.Fprintf(os.Stderr, "Debits plus credits is different from 0: %v %v\n",
+					sum, record[2])
+				return
 			}
 		} else {
 			if sum < 0 {

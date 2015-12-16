@@ -41,6 +41,7 @@ func main() {
 	for s.Scan() {
 		arr := strings.Split(s.Text(), "/")
 		n := strings.Split(arr[len(arr)-1], ".pdf")[0]
+		n = strings.Split(n, ".xlsx")[0]
 		for _, r := range [][]string{
 			{"Ã", "Ã"}, {"Ç", "Ç"}, {"Ê", "Ê"}, {"Á", "Á"}, {"É", "É"}, {"á", "á"},
 			{"ç", "ç"}, {"ã", "ã"}, {"ê", "ê"}, {"é", "é"}} {
@@ -53,7 +54,7 @@ func main() {
 		fileId := ""
 		retrieved := make([]string, 0, len(files))
 		for _, f := range files {
-			if strings.HasPrefix(f.Title, n+".pdf") {
+			if strings.HasPrefix(f.Title, n+".pdf") || strings.HasPrefix(f.Title, n+".xlsx") {
 				if fileId == "" {
 					fileId = f.Id
 				}
