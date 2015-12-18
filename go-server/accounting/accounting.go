@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/gob"
 	"fmt"
-	"reflect"
 	"strconv"
 
 	"github.com/mcesarhm/geek-accounting/go-server/context"
@@ -762,11 +761,21 @@ func PopTransaction(c context.Context, m map[string]interface{}, param map[strin
 	if _, ok := param["coa"]; !ok {
 		return nil, fmt.Errorf("Coa not informed")
 	}
-	ret := reflect.ValueOf(space).MethodByName("Pop").Call(nil)
-	if !ret[0].IsNil() {
-		return nil, ret[0].Interface().(error)
+	type popper interface {
+		Pop() (int32, []int64, error)
 	}
-	return nil, nil
+	p, ok := space.(popper)
+	//ret := reflect.ValueOf(space).MethodByName("Pop").Call(nil)
+	//if !ret[0].IsNil() {
+	if !ok {
+		return nil, fmt.Errorf("Space does not implements popper") //ret[0].Interface().(error)
+	}
+	d, v, err := p.Pop()
+	if err != nil {
+		return nil, err
+	}
+	result := map[string]interface{}{"date": d, "values": v}
+	return result, nil
 }
 
 func appendTransactionOnSpace(c context.Context, coaKey string, space deb.Space,
@@ -929,6 +938,7 @@ func TransactionsFromSpace(space deb.Space, accounts []*Account,
 		err error
 		md  *transactionMetadata
 	)
+	removed := map[int64]int{}
 	for t := range ch {
 		if err != nil {
 			continue
@@ -938,11 +948,17 @@ func TransactionsFromSpace(space deb.Space, accounts []*Account,
 		if md.Removes == -1 {
 			transactions = append(transactions, tx)
 		} else {
-			for i, t := range transactions {
-				if t.Moment == md.Removes {
-					transactions = append(transactions[:i], transactions[i+1:]...)
-					break
-				}
+			removed[md.Removes]++
+		}
+	}
+	for k, v := range removed {
+		if v > 1 {
+			return nil, nil, fmt.Errorf("Duplicated removal %v:%v", k, v)
+		}
+		for i, t := range transactions {
+			if t.Moment == k {
+				transactions = append(transactions[:i], transactions[i+1:]...)
+				break
 			}
 		}
 	}
