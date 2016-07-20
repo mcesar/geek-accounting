@@ -179,3 +179,14 @@ func MoveFile(d *drive.Service, fileId, folderId string) error {
 	}
 	return nil
 }
+
+func CreateFolder(d *drive.Service, folderName, parentId string) (string, error) {
+	f := &drive.File{Title: folderName, MimeType: "application/vnd.google-apps.folder"}
+	p := &drive.ParentReference{Id: parentId}
+	f.Parents = []*drive.ParentReference{p}
+	r, err := d.Files.Insert(f).Do()
+	if err != nil {
+		return "", err
+	}
+	return r.Id, nil
+}
