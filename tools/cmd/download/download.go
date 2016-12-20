@@ -9,7 +9,7 @@ import (
 
 	"google.golang.org/api/drive/v2"
 
-	"github.com/mcesarhm/geek-accounting/tools/gdrive"
+	"github.com/mcesar/geek-accounting/tools/gdrive"
 )
 
 func main() {
