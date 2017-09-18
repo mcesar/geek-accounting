@@ -8,7 +8,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mcesarhm/geek-accounting/tools/gdrive"
+	"github.com/mcesar/geek-accounting/tools/gdrive"
 	"google.golang.org/api/drive/v2"
 )
 
