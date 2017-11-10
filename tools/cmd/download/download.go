@@ -54,7 +54,7 @@ func dowloadFilesInFolder(client *http.Client, srv *drive.Service, folderId, des
 			}
 			fmt.Printf("%s\n", filepath.Join(destination, f.Title))
 		} else if f.MimeType == "application/vnd.google-apps.folder" {
-			os.Mkdir(destination+"/"+f.Title, os.ModeDir)
+			os.Mkdir(destination+"/"+f.Title, 0755)
 			dowloadFilesInFolder(client, srv, f.Id, destination+"/"+f.Title)
 		}
 	}
