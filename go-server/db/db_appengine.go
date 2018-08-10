@@ -206,7 +206,7 @@ func (db appengineDb) GetAllFromCache(kind string, ancestor string, items interf
 		if len(arr[2].(string)) == 0 {
 			break
 		}
-		if err := c.Get(arr[2].(string), arr); err != nil {
+		if err := c.Get(arr[2].(string), &arr); err != nil {
 			logStackTrace(db.c, err)
 			return nil, nil, err
 		}

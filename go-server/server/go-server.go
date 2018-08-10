@@ -22,6 +22,7 @@ import (
 	"github.com/mcesarhm/geek-accounting/go-server/core"
 	"github.com/mcesarhm/geek-accounting/go-server/db"
 	"mcesar.io/deb"
+	debappengine "mcesar.io/deb-appengine"
 
 	"appengine"
 	"appengine/datastore"
@@ -116,7 +117,7 @@ func coaPostHandler(c context.Context, m map[string]interface{}, p map[string]st
 	u core.UserKey) (interface{}, error) {
 	if _, ok := p["coa"]; !ok {
 		c := m["_appengine_context"].(appengine.Context)
-		_, key, err := deb.NewDatastoreSpace(c, nil)
+		_, key, err := debappengine.NewDatastoreSpace(c, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -169,7 +170,7 @@ func coaMigrationHandler(c context.Context, m map[string]interface{}, p map[stri
 			err error
 		)
 		if coa2 == nil {
-			_, key, err = deb.NewDatastoreSpace(ctx, nil)
+			_, key, err = debappengine.NewDatastoreSpace(ctx, nil)
 		} else {
 			key = coa2.Space.DsKey
 		}
@@ -181,7 +182,7 @@ func coaMigrationHandler(c context.Context, m map[string]interface{}, p map[stri
 			db.CKey{key}, u); err != nil {
 			return nil, err
 		} else {
-			if err = deb.CopySpaceToDatastore(ctx, key, s); err != nil {
+			if err = debappengine.CopySpaceToDatastore(ctx, key, s); err != nil {
 				return nil, err
 			}
 			return result, nil
@@ -404,7 +405,7 @@ func space(c context.Context, ctx appengine.Context, coaKey string) (deb.Space,
 			if err != nil {
 				return nil, nil, err
 			}
-			s, _, err := deb.NewDatastoreSpace(ctx, k)
+			s, _, err := debappengine.NewDatastoreSpace(ctx, k)
 			if err != nil {
 				return nil, nil, err
 			}
